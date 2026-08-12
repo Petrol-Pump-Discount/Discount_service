@@ -1,7 +1,9 @@
-import { type FormEvent, useEffect, useState } from 'react'
+import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, getToken } from '../api/client'
+import { TextInput } from '../components/Field'
 import { Shell } from '../components/Shell'
+import { validateCoins, validateRupees } from '../lib/validate'
 
 type Me = { phone: string; role: string; walletCoins: number; name: string }
 type Pump = { pumpId: number; name: string; token: string }
@@ -18,10 +20,19 @@ export function RedeemPage({ onRole }: { onRole?: (r: string) => void }) {
   const [err, setErr] = useState('')
   const [paid, setPaid] = useState<PayRes | null>(null)
   const [busy, setBusy] = useState(false)
+  const [touched, setTouched] = useState(false)
+
+  const maxRupees = (me?.walletCoins ?? 0) / 100
+  const maxCoins = me?.walletCoins ?? 0
+
+  const amountErr = useMemo(() => {
+    if (!touched || !me) return null
+    return mode === 'rupees' ? validateRupees(amount, maxRupees) : validateCoins(amount, maxCoins)
+  }, [amount, mode, maxRupees, maxCoins, touched, me])
 
   useEffect(() => {
     if (!token) {
-      setErr('Invalid pump QR — missing token')
+      setErr('Invalid QR')
       return
     }
     void (async () => {
@@ -46,25 +57,37 @@ export function RedeemPage({ onRole }: { onRole?: (r: string) => void }) {
     })()
   }, [])
 
+  function onAmountChange(raw: string) {
+    if (mode === 'rupees') {
+      const cleaned = raw.replace(/[^\d.]/g, '')
+      const parts = cleaned.split('.')
+      const next =
+        parts.length <= 1 ? cleaned : `${parts[0]}.${parts.slice(1).join('').slice(0, 2)}`
+      setAmount(next.slice(0, 10))
+    } else {
+      setAmount(raw.replace(/\D/g, '').slice(0, 12))
+    }
+  }
+
   async function pay(e: FormEvent) {
     e.preventDefault()
+    setTouched(true)
+    if (!getToken()) {
+      nav('/auth')
+      return
+    }
+    const aErr = mode === 'rupees' ? validateRupees(amount, maxRupees) : validateCoins(amount, maxCoins)
+    if (aErr) {
+      setErr(aErr)
+      return
+    }
     setErr('')
     setPaid(null)
-    if (!getToken()) {
-      nav(`/auth`)
-      return
-    }
-    const n = Number(amount)
-    if (!Number.isFinite(n) || n <= 0) {
-      setErr('Enter a valid amount')
-      return
-    }
     setBusy(true)
     try {
+      const n = Number(amount)
       const body =
-        mode === 'rupees'
-          ? { pumpToken: token, rupees: n }
-          : { pumpToken: token, coins: Math.round(n) }
+        mode === 'rupees' ? { pumpToken: token, rupees: n } : { pumpToken: token, coins: Math.round(n) }
       const res = await api<PayRes>('/api/redeem/pay', {
         method: 'POST',
         body: JSON.stringify(body),
@@ -72,6 +95,7 @@ export function RedeemPage({ onRole }: { onRole?: (r: string) => void }) {
       setPaid(res)
       setMe((prev) => (prev ? { ...prev, walletCoins: res.walletCoins } : prev))
       setAmount('')
+      setTouched(false)
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'Payment failed')
     } finally {
@@ -80,59 +104,70 @@ export function RedeemPage({ onRole }: { onRole?: (r: string) => void }) {
   }
 
   return (
-    <Shell role={me?.role}>
+    <Shell role={me?.role} title="Redeem">
       <div className="card">
-        <h2>Redeem for fuel</h2>
-        {pump && (
-          <p className="muted">
-            Paying <strong>{pump.name}</strong>
-          </p>
-        )}
+        {pump && <p className="muted">{pump.name}</p>}
         {!getToken() && (
-          <p>
-            <Link className="btn btn-primary" to="/auth">
-              Sign in with OTP to pay
-            </Link>
-          </p>
+          <Link className="btn btn-primary" to="/auth">
+            Sign in to pay
+          </Link>
         )}
         {me && (
           <>
             <div className="wallet" style={{ marginTop: 0 }}>
               <div>
                 <div style={{ opacity: 0.75, fontSize: '0.85rem' }}>Available</div>
-                <strong>{me.walletCoins.toLocaleString()} coins</strong>
+                <strong>₹{maxRupees.toFixed(2)}</strong>
               </div>
-              <div>₹{(me.walletCoins / 100).toFixed(2)}</div>
+              <div>{maxCoins.toLocaleString()} coins</div>
             </div>
-            <form className="stack" onSubmit={pay} style={{ marginTop: 12 }}>
+            <form className="stack" onSubmit={pay} style={{ marginTop: 12 }} noValidate>
               <div className="row">
                 <button
                   type="button"
                   className={`btn ${mode === 'rupees' ? 'btn-primary' : 'btn-dark'}`}
-                  onClick={() => setMode('rupees')}
+                  onClick={() => {
+                    setMode('rupees')
+                    setAmount('')
+                    setTouched(false)
+                  }}
                 >
-                  ₹ Rupees
+                  ₹
                 </button>
                 <button
                   type="button"
                   className={`btn ${mode === 'coins' ? 'btn-primary' : 'btn-dark'}`}
-                  onClick={() => setMode('coins')}
+                  onClick={() => {
+                    setMode('coins')
+                    setAmount('')
+                    setTouched(false)
+                  }}
                 >
                   Coins
                 </button>
               </div>
-              <label>
-                {mode === 'rupees' ? 'Amount (₹)' : 'Coins'}
-                <input
-                  required
-                  inputMode="decimal"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder={mode === 'rupees' ? 'e.g. 50' : 'e.g. 5000'}
-                />
-              </label>
-              <button className="btn btn-primary" disabled={busy} type="submit">
-                {busy ? 'Paying…' : 'Pay / Redeem'}
+              <TextInput
+                label={mode === 'rupees' ? 'Amount (₹)' : 'Coins'}
+                inputMode={mode === 'rupees' ? 'decimal' : 'numeric'}
+                value={amount}
+                error={amountErr}
+                hint={mode === 'rupees' ? 'Min ₹1' : 'Min 100 coins'}
+                placeholder={mode === 'rupees' ? '50' : '5000'}
+                onBlur={() => setTouched(true)}
+                onChange={(e) => onAmountChange(e.target.value)}
+              />
+              <button
+                className="btn btn-primary"
+                disabled={
+                  busy ||
+                  !amount ||
+                  !!(mode === 'rupees'
+                    ? validateRupees(amount, maxRupees)
+                    : validateCoins(amount, maxCoins))
+                }
+                type="submit"
+              >
+                {busy ? 'Paying…' : 'Pay'}
               </button>
             </form>
           </>
@@ -140,9 +175,7 @@ export function RedeemPage({ onRole }: { onRole?: (r: string) => void }) {
         {paid && (
           <div style={{ marginTop: 14 }}>
             <p className="ok">{paid.message}</p>
-            <p className="muted">
-              Txn #{paid.txnId} · show this screen to the attendant
-            </p>
+            <p className="muted">Txn #{paid.txnId} — show attendant</p>
           </div>
         )}
         {err && <p className="err">{err}</p>}

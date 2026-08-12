@@ -1,7 +1,16 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, setToken } from '../api/client'
+import { TextInput } from '../components/Field'
 import { Shell } from '../components/Shell'
+import {
+  normalizeName,
+  normalizeOtp,
+  normalizePhone,
+  validateName,
+  validateOtp,
+  validatePhone,
+} from '../lib/validate'
 
 type VerifyRes = {
   token: string
@@ -20,19 +29,31 @@ export function AuthPage() {
   const [hint, setHint] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
+
+  const phoneErr = useMemo(() => (touched.phone ? validatePhone(phone) : null), [phone, touched.phone])
+  const nameErr = useMemo(() => (touched.name ? validateName(name) : null), [name, touched.name])
+  const otpErr = useMemo(() => (touched.otp ? validateOtp(otp) : null), [otp, touched.otp])
 
   async function requestOtp(e: FormEvent) {
     e.preventDefault()
+    setTouched({ phone: true, name: true })
+    const pErr = validatePhone(phone)
+    const nErr = validateName(name)
+    if (pErr || nErr) {
+      setErr(pErr || nErr || '')
+      return
+    }
     setErr('')
     setBusy(true)
     try {
-      const res = await api<{ status: string; devOtp?: string }>('/api/auth/otp/request', {
+      await api<{ status: string; message?: string }>('/api/auth/otp/request', {
         method: 'POST',
         auth: false,
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ phone: normalizePhone(phone) }),
       })
       setSent(true)
-      setHint(res.devOtp ? `Dev OTP: ${res.devOtp}` : 'OTP sent to your phone')
+      setHint('OTP sent to your mobile')
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'Failed')
     } finally {
@@ -42,13 +63,25 @@ export function AuthPage() {
 
   async function verify(e: FormEvent) {
     e.preventDefault()
+    setTouched((t) => ({ ...t, otp: true, phone: true, name: true }))
+    const pErr = validatePhone(phone)
+    const oErr = validateOtp(otp)
+    const nErr = validateName(name)
+    if (pErr || oErr || nErr) {
+      setErr(pErr || oErr || nErr || '')
+      return
+    }
     setErr('')
     setBusy(true)
     try {
       const res = await api<VerifyRes>('/api/auth/otp/verify', {
         method: 'POST',
         auth: false,
-        body: JSON.stringify({ phone, otp, name }),
+        body: JSON.stringify({
+          phone: normalizePhone(phone),
+          otp: normalizeOtp(otp),
+          name: name.trim() || undefined,
+        }),
       })
       setToken(res.token)
       if (res.role === 'ADMIN') nav('/admin')
@@ -62,41 +95,68 @@ export function AuthPage() {
   }
 
   return (
-    <Shell>
+    <Shell title="Sign in">
       <div className="card">
-        <h2>Register / Sign in</h2>
-        <p className="muted">Phone OTP. Wallet stays on your phone number.</p>
         {!sent ? (
-          <form className="stack" onSubmit={requestOtp}>
-            <label>
-              Name (optional)
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Driver name" />
-            </label>
-            <label>
-              Mobile number
-              <input
-                required
-                inputMode="numeric"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="10-digit mobile"
-              />
-            </label>
-            <button className="btn btn-primary" disabled={busy} type="submit">
+          <form className="stack" onSubmit={requestOtp} noValidate>
+            <TextInput
+              label="Mobile"
+              inputMode="numeric"
+              autoComplete="tel"
+              maxLength={10}
+              value={phone}
+              error={phoneErr}
+              hint="10 digits, starts with 6–9"
+              placeholder="9876543210"
+              onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
+              onChange={(e) => setPhone(normalizePhone(e.target.value))}
+            />
+            <TextInput
+              label="Name"
+              autoComplete="name"
+              maxLength={50}
+              value={name}
+              error={nameErr}
+              hint="Optional"
+              placeholder="Your name"
+              onBlur={() => setTouched((t) => ({ ...t, name: true }))}
+              onChange={(e) => setName(normalizeName(e.target.value))}
+            />
+            <button
+              className="btn btn-primary"
+              disabled={busy || !!validatePhone(phone) || !!validateName(name)}
+              type="submit"
+            >
               Send OTP
             </button>
           </form>
         ) : (
-          <form className="stack" onSubmit={verify}>
-            <p className="ok">{hint}</p>
-            <label>
-              OTP
-              <input required value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="6-digit OTP" />
-            </label>
-            <button className="btn btn-primary" disabled={busy} type="submit">
-              Verify & continue
+          <form className="stack" onSubmit={verify} noValidate>
+            <p className="muted">OTP sent to {normalizePhone(phone)}</p>
+            {hint && <p className="ok">{hint}</p>}
+            <TextInput
+              label="OTP"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={otp}
+              error={otpErr}
+              placeholder="6-digit OTP"
+              onBlur={() => setTouched((t) => ({ ...t, otp: true }))}
+              onChange={(e) => setOtp(normalizeOtp(e.target.value))}
+            />
+            <button className="btn btn-primary" disabled={busy || !!validateOtp(otp)} type="submit">
+              Continue
             </button>
-            <button className="btn btn-danger" type="button" onClick={() => setSent(false)}>
+            <button
+              className="btn btn-danger"
+              type="button"
+              onClick={() => {
+                setSent(false)
+                setOtp('')
+                setErr('')
+              }}
+            >
               Change number
             </button>
           </form>

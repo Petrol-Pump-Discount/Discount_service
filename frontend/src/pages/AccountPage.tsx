@@ -1,7 +1,9 @@
-import { type FormEvent, useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api, getToken } from '../api/client'
+import { TextInput, TextSelect } from '../components/Field'
 import { Shell } from '../components/Shell'
+import { normalizeVehicle, validateVehicle } from '../lib/validate'
 
 type Me = { phone: string; role: string; walletCoins: number; name: string }
 type Vehicle = { id: number; regNo: string; fuelType: string }
@@ -14,6 +16,9 @@ export function AccountPage({ onRole }: { onRole?: (r: string) => void }) {
   const [fuelType, setFuelType] = useState('DIESEL')
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
+  const [touched, setTouched] = useState(false)
+
+  const vehicleErr = useMemo(() => (touched ? validateVehicle(regNo) : null), [regNo, touched])
 
   async function load() {
     if (!getToken()) {
@@ -25,8 +30,7 @@ export function AccountPage({ onRole }: { onRole?: (r: string) => void }) {
       setMe(m)
       onRole?.(m.role)
       setVehicles(await api<Vehicle[]>('/api/vehicles'))
-    } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Failed')
+    } catch {
       nav('/auth')
     }
   }
@@ -37,15 +41,26 @@ export function AccountPage({ onRole }: { onRole?: (r: string) => void }) {
 
   async function addVehicle(e: FormEvent) {
     e.preventDefault()
+    setTouched(true)
+    const vErr = validateVehicle(regNo)
+    if (vErr) {
+      setErr(vErr)
+      return
+    }
+    if (fuelType !== 'DIESEL' && fuelType !== 'PETROL') {
+      setErr('Select fuel type')
+      return
+    }
     setErr('')
     setMsg('')
     try {
       await api('/api/vehicles', {
         method: 'POST',
-        body: JSON.stringify({ regNo, fuelType }),
+        body: JSON.stringify({ regNo: normalizeVehicle(regNo), fuelType }),
       })
       setRegNo('')
-      setMsg('Vehicle linked')
+      setTouched(false)
+      setMsg('Vehicle added')
       await load()
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'Failed')
@@ -65,37 +80,26 @@ export function AccountPage({ onRole }: { onRole?: (r: string) => void }) {
   if (!me) {
     return (
       <Shell>
-        <div className="card">Loading account…</div>
+        <div className="card">Loading…</div>
       </Shell>
     )
   }
 
-  const rupees = (me.walletCoins / 100).toFixed(2)
-
   return (
-    <Shell role={me.role}>
+    <Shell role={me.role} title="Wallet">
       <div className="wallet">
         <div>
-          <div className="muted" style={{ color: 'rgba(247,241,227,0.7)' }}>
-            {me.name || me.phone}
-          </div>
-          <strong>{me.walletCoins.toLocaleString()} coins</strong>
+          <div style={{ opacity: 0.75, fontSize: '0.85rem' }}>{me.name || me.phone}</div>
+          <strong>₹{(me.walletCoins / 100).toFixed(2)}</strong>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div className="muted" style={{ color: 'rgba(247,241,227,0.7)' }}>
-            ≈ ₹{rupees}
-          </div>
-          <div style={{ fontSize: '0.85rem' }}>{me.role}</div>
-        </div>
+        <div style={{ textAlign: 'right', fontSize: '0.9rem' }}>{me.walletCoins.toLocaleString()} coins</div>
       </div>
 
       <div className="card">
-        <h2>My vehicles</h2>
-        <p className="muted">Phone ↔ vehicle is many-to-many. Drivers can change.</p>
-        {vehicles.length === 0 && <p className="muted">No vehicles yet — add one to upload bills.</p>}
-        <ul style={{ paddingLeft: '1.1rem', marginTop: 0 }}>
+        <h2>Vehicles</h2>
+        <ul className="vehicle-list">
           {vehicles.map((v) => (
-            <li key={v.id} className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+            <li key={v.id}>
               <span>
                 <strong>{v.regNo}</strong> {v.fuelType && <span className="badge">{v.fuelType}</span>}
               </span>
@@ -105,32 +109,32 @@ export function AccountPage({ onRole }: { onRole?: (r: string) => void }) {
             </li>
           ))}
         </ul>
-        <form className="stack" onSubmit={addVehicle}>
-          <label>
-            Registration number
-            <input required value={regNo} onChange={(e) => setRegNo(e.target.value.toUpperCase())} placeholder="KA01AB1234" />
-          </label>
-          <label>
-            Fuel type
-            <select value={fuelType} onChange={(e) => setFuelType(e.target.value)}>
-              <option value="DIESEL">Diesel</option>
-              <option value="PETROL">Petrol</option>
-            </select>
-          </label>
-          <button className="btn btn-primary" type="submit">
-            Link vehicle
+        {vehicles.length === 0 && <p className="muted">Add a vehicle before uploading bills.</p>}
+
+        <form className="stack" onSubmit={addVehicle} noValidate>
+          <TextInput
+            label="Vehicle number"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            maxLength={12}
+            value={regNo}
+            error={vehicleErr}
+            hint="e.g. KA01AB1234"
+            placeholder="KA01AB1234"
+            onBlur={() => setTouched(true)}
+            onChange={(e) => setRegNo(normalizeVehicle(e.target.value))}
+          />
+          <TextSelect label="Fuel" value={fuelType} onChange={(e) => setFuelType(e.target.value)}>
+            <option value="DIESEL">Diesel</option>
+            <option value="PETROL">Petrol</option>
+          </TextSelect>
+          <button className="btn btn-primary" type="submit" disabled={!!validateVehicle(regNo)}>
+            Add vehicle
           </button>
         </form>
         {msg && <p className="ok">{msg}</p>}
         {err && <p className="err">{err}</p>}
-      </div>
-
-      <div className="card">
-        <h3>Redeem fuel</h3>
-        <p className="muted">Scan the QR displayed at the pump (not from this screen).</p>
-        <Link className="btn btn-dark" to="/upload">
-          Upload a bill
-        </Link>
       </div>
     </Shell>
   )
