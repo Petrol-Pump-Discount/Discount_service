@@ -43,6 +43,6 @@ public class RedeemController {
     @GetMapping("/qr-link")
     public Map<String, String> qrLink() {
         var p = pumps.findAll().get(0);
-        return Map.of("url", "/redeem.html?token=" + p.getRedeemToken(), "token", p.getRedeemToken());
+        return Map.of("url", "/redeem?token=" + p.getRedeemToken(), "token", p.getRedeemToken());
     }
 }

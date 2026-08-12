@@ -5,8 +5,6 @@ services:
       POSTGRES_DB: discount
       POSTGRES_USER: discount
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-discount}
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -16,7 +14,7 @@ services:
       retries: 10
 
   app:
-    build: ./backend
+    image: ghcr.io/petrol-pump-discount/discount_service/backend:latest
     environment:
       SPRING_PROFILES_ACTIVE: prod
       DATABASE_URL: jdbc:postgresql://postgres:5432/discount
@@ -25,7 +23,7 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-latest}
       UPLOAD_DIR: /data/uploads
-      OTP_DEV_CODE: ${OTP_DEV_CODE:-123456}
+      OTP_DEV_CODE: ${OTP_DEV_CODE:-}
       PUMP_LAT: ${PUMP_LAT:-13.765987}
       PUMP_LNG: ${PUMP_LNG:-76.852652}
       PUMP_RADIUS_METERS: ${PUMP_RADIUS_METERS:-50}
@@ -34,17 +32,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    expose:
-      - "8080"
-    ports:
-      - "8080:8080"
+    restart: unless-stopped
 
   web:
-    build: ./frontend
+    image: ghcr.io/petrol-pump-discount/discount_service/frontend:latest
     ports:
       - "80:80"
     depends_on:
       - app
+    restart: unless-stopped
 
 volumes:
   pgdata:
