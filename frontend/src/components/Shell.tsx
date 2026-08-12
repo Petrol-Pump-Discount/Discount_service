@@ -6,11 +6,15 @@ export function TopNav({ role }: { role?: string }) {
   const loggedIn = !!getToken()
   return (
     <nav className="nav" aria-label="Primary">
-      <NavLink to="/" end>Home</NavLink>
-      <NavLink to="/upload">Upload bill</NavLink>
-      {loggedIn && <NavLink to="/account">Account</NavLink>}
+      <NavLink to="/" end>
+        Home
+      </NavLink>
+      <NavLink to="/upload">Upload</NavLink>
+      {loggedIn && (
+        <NavLink to="/account">Wallet</NavLink>
+      )}
       {(role === 'ADMIN' || role === 'EMPLOYEE') && (
-        <NavLink to="/employee">Live feed</NavLink>
+        <NavLink to="/employee">Live</NavLink>
       )}
       {role === 'ADMIN' && <NavLink to="/admin">Admin</NavLink>}
       {loggedIn ? (
@@ -22,7 +26,7 @@ export function TopNav({ role }: { role?: string }) {
             window.location.reload()
           }}
         >
-          Sign out
+          Out
         </button>
       ) : (
         <Link to="/auth">Sign in</Link>
@@ -35,18 +39,19 @@ export function Shell({
   children,
   wide,
   role,
+  title,
 }: {
   children: React.ReactNode
   wide?: boolean
   role?: string
+  title?: string
 }) {
   return (
     <div className={`app-shell${wide ? ' wide-shell' : ''}`}>
-      <p className="eyebrow">IndianOil · NAGA SHREE</p>
-      <h1 className="brand">Pump Loyalty</h1>
+      <p className="eyebrow">NAGA SHREE</p>
+      <h1 className="brand">{title || 'Pump Loyalty'}</h1>
       <TopNav role={role} />
       {children}
-      <p className="footer-note">1 coin = 1 paisa · Redeem only as fuel at the pump QR</p>
     </div>
   )
 }

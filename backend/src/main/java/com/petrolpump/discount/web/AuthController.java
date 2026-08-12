@@ -5,29 +5,27 @@ import com.petrolpump.discount.service.AuthService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
     private final AuthService auth;
-    private final String otpDevCode;
+    private final String provider;
 
-    public AuthController(AuthService auth, @Value("${app.otp-dev-code:}") String otpDevCode) {
+    public AuthController(AuthService auth, @Value("${app.otp.provider:console}") String provider) {
         this.auth = auth;
-        this.otpDevCode = otpDevCode == null ? "" : otpDevCode.trim();
+        this.provider = provider;
     }
 
     @PostMapping("/otp/request")
     public Map<String, String> request(@RequestBody Map<String, String> body) {
         auth.requestOtp(body.get("phone"));
-        Map<String, String> out = new LinkedHashMap<>();
-        out.put("status", "ok");
-        if (!otpDevCode.isBlank()) {
-            out.put("devOtp", otpDevCode);
-        }
-        return out;
+        return Map.of(
+                "status", "ok",
+                "message", "OTP sent to your mobile",
+                "provider", provider
+        );
     }
 
     @PostMapping("/otp/verify")

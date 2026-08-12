@@ -24,8 +24,15 @@ spring:
       max-request-size: 12MB
 app:
   upload-dir: ./uploads
-  otp-dev-code: "123456"
   session-header: X-Session-Token
+  otp:
+    provider: ${OTP_PROVIDER:console}
+    ttl-seconds: ${OTP_TTL_SECONDS:300}
+    max-attempts: ${OTP_MAX_ATTEMPTS:5}
+  twilio:
+    account-sid: ${TWILIO_ACCOUNT_SID:}
+    auth-token: ${TWILIO_AUTH_TOKEN:}
+    verify-service-sid: ${TWILIO_VERIFY_SERVICE_SID:}
   pump:
     lat: 13.765987
     lng: 76.852652

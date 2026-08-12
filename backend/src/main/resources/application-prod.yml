@@ -3,19 +3,37 @@ spring:
     activate:
       on-profile: prod
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://postgres:5432/discount}
-    username: ${DATABASE_USER:discount}
-    password: ${DATABASE_PASSWORD:discount}
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USER}
+    password: ${DATABASE_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:5}
+      minimum-idle: 1
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
   h2:
     console:
       enabled: false
   jpa:
     hibernate:
       ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: Asia/Kolkata
 app:
   upload-dir: ${UPLOAD_DIR:/data/uploads}
-  otp-dev-code: ${OTP_DEV_CODE:}
+  otp:
+    provider: ${OTP_PROVIDER:twilio}
+    ttl-seconds: ${OTP_TTL_SECONDS:300}
+    max-attempts: ${OTP_MAX_ATTEMPTS:5}
+  twilio:
+    account-sid: ${TWILIO_ACCOUNT_SID:}
+    auth-token: ${TWILIO_AUTH_TOKEN:}
+    verify-service-sid: ${TWILIO_VERIFY_SERVICE_SID:}
   pump:
     lat: ${PUMP_LAT:13.765987}
     lng: ${PUMP_LNG:76.852652}
@@ -25,3 +43,5 @@ app:
     model: ${GEMINI_MODEL:gemini-flash-latest}
 server:
   port: ${PORT:8080}
+  # behind Cloudflare / reverse proxy
+  forward-headers-strategy: framework

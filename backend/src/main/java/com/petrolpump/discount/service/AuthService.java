@@ -2,12 +2,14 @@ package com.petrolpump.discount.service;
 
 import com.petrolpump.discount.domain.*;
 import com.petrolpump.discount.repo.*;
+import com.petrolpump.discount.service.otp.OtpSender;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
@@ -18,29 +20,82 @@ import java.util.concurrent.ConcurrentHashMap;
 public class AuthService {
     private final AppUserRepository users;
     private final UserSessionRepository sessions;
-    private final String devOtp;
-    private final Map<String, String> pendingOtps = new ConcurrentHashMap<>();
+    private final OtpSender otpSender;
+    private final int otpTtlSeconds;
+    private final int otpMaxAttempts;
+    private final SecureRandom random = new SecureRandom();
+    private final Map<String, PendingOtp> pending = new ConcurrentHashMap<>();
+    private final Map<String, Instant> lastRequest = new ConcurrentHashMap<>();
 
-    public AuthService(AppUserRepository users, UserSessionRepository sessions,
-                       @Value("${app.otp-dev-code:123456}") String devOtp) {
+    public AuthService(AppUserRepository users, UserSessionRepository sessions, OtpSender otpSender,
+                       @Value("${app.otp.ttl-seconds:300}") int otpTtlSeconds,
+                       @Value("${app.otp.max-attempts:5}") int otpMaxAttempts) {
         this.users = users;
         this.sessions = sessions;
-        this.devOtp = devOtp;
+        this.otpSender = otpSender;
+        this.otpTtlSeconds = otpTtlSeconds;
+        this.otpMaxAttempts = otpMaxAttempts;
     }
 
     public void requestOtp(String phone) {
         phone = normalizePhone(phone);
-        pendingOtps.put(phone, devOtp);
+        Instant now = Instant.now();
+        Instant prev = lastRequest.get(phone);
+        if (prev != null && prev.plusSeconds(30).isAfter(now)) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Wait 30 seconds before requesting another OTP");
+        }
+        lastRequest.put(phone, now);
+
+        String code = String.format("%06d", random.nextInt(1_000_000));
+        if (!otpSender.providerVerifies()) {
+            pending.put(phone, new PendingOtp(code, now.plusSeconds(otpTtlSeconds), 0));
+        } else {
+            pending.remove(phone);
+        }
+        try {
+            otpSender.send(phone, code);
+        } catch (Exception ex) {
+            pending.remove(phone);
+            org.slf4j.LoggerFactory.getLogger(AuthService.class)
+                    .error("OTP send failed for {}: {}", phone, ex.toString());
+            String reason = ex.getMessage() == null ? "Failed to send OTP" : ex.getMessage();
+            if (reason.length() > 180) reason = reason.substring(0, 180);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, reason);
+        }
     }
 
     @Transactional
     public String verifyOtp(String phone, String otp, String name, UserRole roleIfNew) {
         phone = normalizePhone(phone);
-        String expected = pendingOtps.getOrDefault(phone, devOtp);
-        if (!expected.equals(otp)) {
+        if (otp == null || !otp.matches("\\d{6}")) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid OTP");
         }
-        pendingOtps.remove(phone);
+
+        boolean ok;
+        if (otpSender.providerVerifies()) {
+            try {
+                ok = otpSender.verify(phone, otp);
+            } catch (Exception ex) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid OTP");
+            }
+        } else {
+            PendingOtp p = pending.get(phone);
+            if (p == null || p.expiresAt.isBefore(Instant.now())) {
+                pending.remove(phone);
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "OTP expired — request a new one");
+            }
+            if (p.attempts >= otpMaxAttempts) {
+                pending.remove(phone);
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Too many attempts — request a new OTP");
+            }
+            p.attempts++;
+            ok = p.code.equals(otp);
+            if (ok) pending.remove(phone);
+        }
+        if (!ok) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid OTP");
+        }
+
         final String phoneFinal = phone;
         final String nameFinal = name;
         final UserRole roleFinal = roleIfNew == null ? UserRole.DRIVER : roleIfNew;
@@ -83,9 +138,21 @@ public class AuthService {
     public static String normalizePhone(String phone) {
         String digits = phone == null ? "" : phone.replaceAll("\\D", "");
         if (digits.length() > 10) digits = digits.substring(digits.length() - 10);
-        if (digits.length() != 10) {
+        if (digits.length() != 10 || digits.charAt(0) < '6') {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid phone");
         }
         return digits;
+    }
+
+    private static final class PendingOtp {
+        final String code;
+        final Instant expiresAt;
+        int attempts;
+
+        PendingOtp(String code, Instant expiresAt, int attempts) {
+            this.code = code;
+            this.expiresAt = expiresAt;
+            this.attempts = attempts;
+        }
     }
 }

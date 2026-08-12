@@ -9,7 +9,10 @@ RUN ./mvnw -B -DskipTests package
 
 FROM eclipse-temurin:17-jre
 WORKDIR /app
-RUN mkdir -p /data/uploads
+RUN mkdir -p /data/uploads \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends curl \
+  && rm -rf /var/lib/apt/lists/*
 COPY --from=build /src/target/discount-service-0.0.1-SNAPSHOT.jar app.jar
 ENV SPRING_PROFILES_ACTIVE=prod
 EXPOSE 8080

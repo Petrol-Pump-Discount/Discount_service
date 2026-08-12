@@ -88,13 +88,17 @@ button, input, select, textarea {
 .stack { display: grid; gap: 0.75rem; }
 .row { display: flex; gap: 0.65rem; flex-wrap: wrap; align-items: center; }
 
-label {
+label, .field {
   display: grid;
   gap: 0.35rem;
   font-size: 0.9rem;
   color: var(--muted);
   font-weight: 500;
 }
+
+.field-label { color: var(--ink); font-weight: 600; font-size: 0.88rem; }
+.field-hint { font-size: 0.78rem; color: var(--muted); font-weight: 500; }
+.field-error { font-size: 0.8rem; color: var(--danger); font-weight: 600; }
 
 input, select, textarea {
   width: 100%;
@@ -108,6 +112,38 @@ input, select, textarea {
 input:focus, select:focus, textarea:focus {
   outline: 2px solid rgba(240, 162, 2, 0.45);
   border-color: var(--accent);
+}
+
+.field-invalid input,
+.field-invalid select,
+input[aria-invalid="true"],
+select[aria-invalid="true"] {
+  border-color: #f87171;
+  background: #fff7f7;
+}
+
+.gps-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: #eef6f1;
+  color: var(--bg1);
+}
+.gps-pill.bad { background: #fee2e2; color: #991b1b; }
+.gps-pill.wait { background: #fff4d6; color: #92400e; }
+
+.vehicle-list { list-style: none; padding: 0; margin: 0 0 0.75rem; }
+.vehicle-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid #e8e1d2;
 }
 
 .btn {

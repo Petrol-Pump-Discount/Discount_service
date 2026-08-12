@@ -1,47 +1,58 @@
-services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: discount
-      POSTGRES_USER: discount
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-discount}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U discount -d discount"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+# Production: App + UI on VPS. Database = Neon (managed Postgres).
+# Domain/HTTPS = Cloudflare proxy → this host :80
+#
+# Usage on VPS:
+#   cp .env.example .env   # fill Neon + Twilio + Gemini
+#   docker compose -f docker-compose.prod.yml --env-file .env pull
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d
 
+services:
   app:
-    image: ghcr.io/petrol-pump-discount/discount_service/backend:latest
+    image: ghcr.io/petrol-pump-discount/discount_service/backend:${IMAGE_TAG:-latest}
+    build: ./backend
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      DATABASE_URL: jdbc:postgresql://postgres:5432/discount
-      DATABASE_USER: discount
-      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-discount}
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-latest}
       UPLOAD_DIR: /data/uploads
-      OTP_DEV_CODE: ${OTP_DEV_CODE:-}
+      OTP_PROVIDER: ${OTP_PROVIDER:-twilio}
+      OTP_TTL_SECONDS: ${OTP_TTL_SECONDS:-300}
+      OTP_MAX_ATTEMPTS: ${OTP_MAX_ATTEMPTS:-5}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      TWILIO_VERIFY_SERVICE_SID: ${TWILIO_VERIFY_SERVICE_SID}
       PUMP_LAT: ${PUMP_LAT:-13.765987}
       PUMP_LNG: ${PUMP_LNG:-76.852652}
       PUMP_RADIUS_METERS: ${PUMP_RADIUS_METERS:-50}
     volumes:
       - uploads:/data/uploads
-    depends_on:
-      postgres:
-        condition: service_healthy
+    expose:
+      - "8080"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
   web:
-    image: ghcr.io/petrol-pump-discount/discount_service/frontend:latest
+    image: ghcr.io/petrol-pump-discount/discount_service/frontend:${IMAGE_TAG:-latest}
+    build: ./frontend
     ports:
       - "80:80"
     depends_on:
-      - app
+      app:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
 
 volumes:
-  pgdata:
   uploads:

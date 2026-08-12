@@ -1,6 +1,13 @@
-import { type FormEvent, useEffect, useRef, useState } from 'react'
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api/client'
+import { TextInput } from '../components/Field'
 import { Shell } from '../components/Shell'
+import {
+  normalizePhone,
+  normalizeVehicle,
+  validatePhone,
+  validateVehicle,
+} from '../lib/validate'
 
 type UploadRes = {
   id: number
@@ -23,10 +30,17 @@ export function UploadPage({ role }: { role?: string }) {
   const [err, setErr] = useState('')
   const [result, setResult] = useState<UploadRes | null>(null)
   const [busy, setBusy] = useState(false)
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
+
+  const phoneErr = useMemo(() => (touched.phone ? validatePhone(phone) : null), [phone, touched.phone])
+  const vehicleErr = useMemo(
+    () => (touched.vehicle ? validateVehicle(vehicleNo) : null),
+    [vehicleNo, touched.vehicle],
+  )
 
   useEffect(() => {
     if (!navigator.geolocation) {
-      setGeoErr('GPS not available on this device')
+      setGeoErr('Location unavailable')
       return
     }
     navigator.geolocation.getCurrentPosition(
@@ -34,7 +48,7 @@ export function UploadPage({ role }: { role?: string }) {
         setLat(p.coords.latitude)
         setLng(p.coords.longitude)
       },
-      () => setGeoErr('Allow location — must be within 50m of the pump'),
+      () => setGeoErr('Allow location — must be at the pump'),
       { enableHighAccuracy: true, timeout: 15000 },
     )
   }, [])
@@ -55,14 +69,12 @@ export function UploadPage({ role }: { role?: string }) {
         await videoRef.current.play()
       }
     } catch {
-      setErr('Camera permission required. Gallery upload is not allowed.')
+      setErr('Camera required — gallery upload not allowed')
     }
   }
 
   useEffect(() => {
-    return () => {
-      stream?.getTracks().forEach((t) => t.stop())
-    }
+    return () => stream?.getTracks().forEach((t) => t.stop())
   }, [stream])
 
   function capture() {
@@ -89,21 +101,28 @@ export function UploadPage({ role }: { role?: string }) {
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    setErr('')
-    setResult(null)
+    setTouched({ phone: true, vehicle: true })
+    const pErr = validatePhone(phone)
+    const vErr = validateVehicle(vehicleNo)
+    if (pErr || vErr) {
+      setErr(pErr || vErr || '')
+      return
+    }
     if (!blob) {
-      setErr('Capture the bill with the camera first')
+      setErr('Capture the bill photo first')
       return
     }
     if (lat == null || lng == null) {
-      setErr(geoErr || 'Waiting for GPS…')
+      setErr(geoErr || 'Waiting for location…')
       return
     }
+    setErr('')
+    setResult(null)
     setBusy(true)
     try {
       const fd = new FormData()
-      fd.append('phone', phone)
-      fd.append('vehicleNo', vehicleNo)
+      fd.append('phone', normalizePhone(phone))
+      fd.append('vehicleNo', normalizeVehicle(vehicleNo))
       fd.append('lat', String(lat))
       fd.append('lng', String(lng))
       fd.append('image', blob, 'bill.jpg')
@@ -120,25 +139,35 @@ export function UploadPage({ role }: { role?: string }) {
     }
   }
 
+  const canSubmit =
+    !validatePhone(phone) && !validateVehicle(vehicleNo) && !!blob && lat != null && lng != null && !busy
+
   return (
-    <Shell role={role}>
+    <Shell role={role} title="Upload bill">
       <div className="card">
-        <h2>Upload bill</h2>
-        <p className="muted">No sign-in required. Phone must be registered and vehicle linked. Camera only · GPS ≤ 50m.</p>
-        <form className="stack" onSubmit={submit}>
-          <label>
-            Registered mobile
-            <input required inputMode="numeric" value={phone} onChange={(e) => setPhone(e.target.value)} />
-          </label>
-          <label>
-            Vehicle number
-            <input
-              required
-              value={vehicleNo}
-              onChange={(e) => setVehicleNo(e.target.value.toUpperCase())}
-              placeholder="Must match bill + your account"
-            />
-          </label>
+        <form className="stack" onSubmit={submit} noValidate>
+          <TextInput
+            label="Registered mobile"
+            inputMode="numeric"
+            maxLength={10}
+            value={phone}
+            error={phoneErr}
+            placeholder="9876543210"
+            onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
+            onChange={(e) => setPhone(normalizePhone(e.target.value))}
+          />
+          <TextInput
+            label="Vehicle number"
+            autoCapitalize="characters"
+            spellCheck={false}
+            maxLength={12}
+            value={vehicleNo}
+            error={vehicleErr}
+            hint="Must match bill and your account"
+            placeholder="KA01AB1234"
+            onBlur={() => setTouched((t) => ({ ...t, vehicle: true }))}
+            onChange={(e) => setVehicleNo(normalizeVehicle(e.target.value))}
+          />
 
           <div className="camera-box">
             {!preview && !stream && (
@@ -151,14 +180,14 @@ export function UploadPage({ role }: { role?: string }) {
                 <video ref={videoRef} playsInline muted autoPlay />
                 <div className="row" style={{ justifyContent: 'center', marginTop: 10 }}>
                   <button type="button" className="btn btn-primary" onClick={capture}>
-                    Capture bill
+                    Capture
                   </button>
                 </div>
               </>
             )}
             {preview && (
               <>
-                <img src={preview} alt="Captured bill" />
+                <img src={preview} alt="Bill" />
                 <div className="row" style={{ justifyContent: 'center', marginTop: 10 }}>
                   <button type="button" className="btn btn-danger" onClick={() => void startCamera()}>
                     Retake
@@ -168,23 +197,23 @@ export function UploadPage({ role }: { role?: string }) {
             )}
           </div>
 
-          <p className="muted">
-            GPS:{' '}
-            {lat != null && lng != null
-              ? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
-              : geoErr || 'locating…'}
-          </p>
+          <div>
+            {lat != null && lng != null ? (
+              <span className="gps-pill">Location ready</span>
+            ) : (
+              <span className={`gps-pill ${geoErr ? 'bad' : 'wait'}`}>{geoErr || 'Getting location…'}</span>
+            )}
+          </div>
 
-          <button className="btn btn-primary" type="submit" disabled={busy}>
-            {busy ? 'Submitting…' : 'Submit for verification'}
+          <button className="btn btn-primary" type="submit" disabled={!canSubmit}>
+            {busy ? 'Submitting…' : 'Submit'}
           </button>
         </form>
         {result && (
           <div style={{ marginTop: 12 }}>
             <p className="ok">{result.message}</p>
             <p className="muted">
-              Status <span className="badge warn">{result.status}</span> · Receipt {result.receiptKey} ·{' '}
-              {result.volumeLitres} L
+              <span className="badge warn">{result.status}</span> · {result.receiptKey} · {result.volumeLitres} L
             </p>
           </div>
         )}
