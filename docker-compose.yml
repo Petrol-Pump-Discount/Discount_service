@@ -25,10 +25,12 @@ services:
       DATABASE_USER: discount
       DATABASE_PASSWORD: discount
       GEMINI_API_KEY: ${GEMINI_API_KEY}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-latest}
       UPLOAD_DIR: /data/uploads
-      # leave empty in real prod to disable fixed OTP; for first live demo you may set OTP_DEV_CODE=123456
       OTP_DEV_CODE: ${OTP_DEV_CODE:-}
+      PUMP_LAT: ${PUMP_LAT:-13.765987}
+      PUMP_LNG: ${PUMP_LNG:-76.852652}
+      PUMP_RADIUS_METERS: ${PUMP_RADIUS_METERS:-50}
     volumes:
       - uploads:/data/uploads
     depends_on:

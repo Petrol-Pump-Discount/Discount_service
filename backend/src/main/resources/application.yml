@@ -26,6 +26,10 @@ app:
   upload-dir: ./uploads
   otp-dev-code: "123456"
   session-header: X-Session-Token
+  pump:
+    lat: 13.765987
+    lng: 76.852652
+    radius-meters: 50
   gemini:
     api-key: ${GEMINI_API_KEY:}
-    model: ${GEMINI_MODEL:gemini-2.0-flash}
+    model: ${GEMINI_MODEL:gemini-flash-latest}

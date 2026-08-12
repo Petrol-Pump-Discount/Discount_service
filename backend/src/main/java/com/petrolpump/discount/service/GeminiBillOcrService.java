@@ -23,7 +23,7 @@ public class GeminiBillOcrService {
 
     public GeminiBillOcrService(
             @Value("${app.gemini.api-key:}") String apiKey,
-            @Value("${app.gemini.model:gemini-2.0-flash}") String model) {
+            @Value("${app.gemini.model:gemini-flash-latest}") String model) {
         this.mapper = new ObjectMapper();
         this.apiKey = apiKey == null ? "" : apiKey.trim();
         this.model = model;
@@ -70,11 +70,12 @@ public class GeminiBillOcrService {
             );
 
             String url = "https://generativelanguage.googleapis.com/v1beta/models/"
-                    + model + ":generateContent?key=" + apiKey;
+                    + model + ":generateContent";
 
             String response = restClient.post()
                     .uri(url)
                     .contentType(MediaType.APPLICATION_JSON)
+                    .header("X-goog-api-key", apiKey)
                     .body(body)
                     .retrieve()
                     .body(String.class);
