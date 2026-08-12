@@ -4,3 +4,4 @@ backend/uploads/
 .idea/
 *.iml
 .DS_Store
+.env
