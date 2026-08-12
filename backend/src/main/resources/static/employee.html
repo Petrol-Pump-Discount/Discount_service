@@ -1,0 +1,25 @@
+<!doctype html><html><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Employee</title><link rel="stylesheet" href="/css/app.css"/><script src="/js/api.js"></script></head>
+<body><div class="wrap">
+<a href="/" class="muted">← Home</a>
+<h1>Employee (view only)</h1>
+<div class="card">
+  <p class="muted">Seed employee 8888888888 / OTP 123456</p>
+  <input id="phone" value="8888888888"/><input id="otp" placeholder="OTP"/>
+  <button onclick="login()">Login</button>
+</div>
+<div class="card" id="feed" style="display:none">
+  <h3>Live redeems</h3>
+  <pre id="out"></pre>
+  <button class="secondary" onclick="load()">Refresh</button>
+</div>
+<script>
+async function login(){
+  await api('/api/auth/otp/request',{method:'POST',body:JSON.stringify({phone:phone.value})});
+  const d=await api('/api/auth/otp/verify',{method:'POST',body:JSON.stringify({phone:phone.value,otp:otp.value||'123456'})});
+  localStorage.setItem('token',d.token); feed.style.display='block'; load(); setInterval(load,5000);
+}
+async function load(){ out.textContent=JSON.stringify(await api('/api/employee/redeems/live'),null,2); }
+</script>
+</div></body></html>

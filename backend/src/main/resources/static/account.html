@@ -1,0 +1,51 @@
+<!doctype html><html><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Account</title><link rel="stylesheet" href="/css/app.css"/><script src="/js/api.js"></script></head>
+<body><div class="wrap">
+<a href="/" class="muted">← Home</a>
+<h1>Register / Sign in</h1>
+<div class="card" id="loginBox">
+  <label>Phone</label><input id="phone" inputmode="numeric" placeholder="10-digit"/>
+  <label>Name (new users)</label><input id="name" placeholder="Optional"/>
+  <button onclick="requestOtp()">Send OTP</button>
+  <label>OTP</label><input id="otp" placeholder="Dev: 123456"/>
+  <button onclick="verify()">Verify & continue</button>
+  <p id="msg" class="muted"></p>
+</div>
+<div class="card" id="dash" style="display:none">
+  <p>Phone: <b id="dPhone"></b></p>
+  <p>Wallet: <b id="dWallet"></b> coins (<span id="dRs"></span>)</p>
+  <h3>My vehicles</h3>
+  <ul id="vehList"></ul>
+  <label>Add vehicle</label><input id="regNo" placeholder="KA01AB1234"/>
+  <button onclick="addVeh()">Add</button>
+  <button class="secondary" onclick="logout()">Logout</button>
+</div>
+<script>
+async function requestOtp(){
+  try { await api('/api/auth/otp/request',{method:'POST',body:JSON.stringify({phone:phone.value})}); msg.textContent='OTP sent (dev 123456)'; msg.className='ok'; }
+  catch(e){ msg.textContent=e.message; msg.className='bad'; }
+}
+async function verify(){
+  try {
+    const d = await api('/api/auth/otp/verify',{method:'POST',body:JSON.stringify({phone:phone.value,otp:otp.value,name:name.value})});
+    localStorage.setItem('token', d.token); showDash();
+  } catch(e){ msg.textContent=e.message; msg.className='bad'; }
+}
+async function showDash(){
+  try {
+    const me = await api('/api/auth/me');
+    loginBox.style.display='none'; dash.style.display='block';
+    dPhone.textContent=me.phone; dWallet.textContent=me.walletCoins; dRs.textContent='₹'+(me.walletCoins/100).toFixed(2);
+    const vs = await api('/api/vehicles');
+    vehList.innerHTML = vs.map(v=>`<li>${v.regNo}</li>`).join('') || '<li class="muted">None</li>';
+  } catch { loginBox.style.display='block'; dash.style.display='none'; }
+}
+async function addVeh(){
+  await api('/api/vehicles',{method:'POST',body:JSON.stringify({regNo:regNo.value,fuelType:'HSD'})});
+  regNo.value=''; showDash();
+}
+function logout(){ localStorage.removeItem('token'); location.reload(); }
+if (token()) showDash();
+</script>
+</div></body></html>

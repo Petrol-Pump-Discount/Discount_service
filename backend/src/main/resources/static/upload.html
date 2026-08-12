@@ -1,0 +1,44 @@
+<!doctype html><html><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Upload bill</title><link rel="stylesheet" href="/css/app.css"/><script src="/js/api.js"></script></head>
+<body><div class="wrap">
+<a href="/" class="muted">← Home</a>
+<h1>Upload bill</h1>
+<div class="card">
+  <p class="muted">No login needed. Account must already exist with this vehicle linked.</p>
+  <label>Phone</label><input id="phone" inputmode="numeric"/>
+  <label>Vehicle number</label><input id="vehicleNo"/>
+  <label>FCC ID or Trans ID</label><input id="receiptKey" placeholder="last 9 digits used"/>
+  <label>Bill No (optional)</label><input id="billNo"/>
+  <label>Volume (L)</label><input id="volume" type="number" step="0.01"/>
+  <label>Duplicate receipt?</label>
+  <select id="dup"><option value="false">No</option><option value="true">Yes (will reject)</option></select>
+  <label>Bill photo (camera only)</label>
+  <input id="image" type="file" accept="image/*" capture="environment"/>
+  <button onclick="submit()">Submit for verification</button>
+  <p id="msg" class="muted"></p>
+</div>
+<script>
+async function submit(){
+  msg.textContent='Getting location…';
+  try {
+    const pos = await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{enableHighAccuracy:true,timeout:15000}));
+    const fd = new FormData();
+    fd.append('phone', phone.value);
+    fd.append('vehicleNo', vehicleNo.value);
+    fd.append('receiptKey', receiptKey.value);
+    fd.append('billNo', billNo.value);
+    fd.append('volume', volume.value);
+    fd.append('duplicateFlag', dup.value);
+    fd.append('lat', pos.coords.latitude);
+    fd.append('lng', pos.coords.longitude);
+    if (!image.files[0]) throw new Error('Take a camera photo');
+    fd.append('image', image.files[0]);
+    const res = await fetch('/api/claims/upload',{method:'POST',body:fd});
+    const data = await res.json().catch(()=>({}));
+    if (!res.ok) throw new Error(data.message || JSON.stringify(data));
+    msg.className='ok'; msg.textContent = data.message + ' (#' + data.receiptKey + ')';
+  } catch(e){ msg.className='bad'; msg.textContent=e.message; }
+}
+</script>
+</div></body></html>

@@ -1,0 +1,56 @@
+<!doctype html><html><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Admin</title><link rel="stylesheet" href="/css/app.css"/><script src="/js/api.js"></script></head>
+<body><div class="wrap">
+<a href="/" class="muted">← Home</a>
+<h1>Admin</h1>
+<div class="card">
+  <p class="muted">Seed admin phone 9999999999, OTP 123456</p>
+  <input id="phone" value="9999999999"/><input id="otp" placeholder="OTP"/>
+  <button onclick="login()">Login</button>
+</div>
+<div id="panel" style="display:none">
+  <div class="card"><h3>Summary</h3><pre id="sum"></pre></div>
+  <div class="card"><h3>Alerts</h3><pre id="alerts"></pre></div>
+  <div class="card"><h3>Loyalty config</h3>
+    <label>rate 100-200</label><input id="r1" type="number"/>
+    <label>rate 200-300</label><input id="r2" type="number"/>
+    <label>rate 300+</label><input id="r3" type="number"/>
+    <label>bonus mid %</label><input id="b1" type="number"/>
+    <label>bonus high %</label><input id="b2" type="number"/>
+    <button onclick="saveCfg()">Save rates</button>
+  </div>
+  <div class="card"><h3>Upload SiteOmat PDF</h3>
+    <input id="pdf" type="file" accept="application/pdf,text/plain"/>
+    <label>Force-reject IDs (comma)</label><input id="rej"/>
+    <button onclick="upPdf()">Process PDF</button>
+    <p id="pdfMsg"></p>
+  </div>
+  <div class="card"><h3>Claims</h3><pre id="claims"></pre></div>
+  <div class="card"><h3>Pump QR</h3><p id="qr"></p></div>
+</div>
+<script>
+async function login(){
+  await api('/api/auth/otp/request',{method:'POST',body:JSON.stringify({phone:phone.value})});
+  const d=await api('/api/auth/otp/verify',{method:'POST',body:JSON.stringify({phone:phone.value,otp:otp.value||'123456'})});
+  localStorage.setItem('token',d.token); panel.style.display='block'; refresh();
+}
+async function refresh(){
+  sum.textContent=JSON.stringify(await api('/api/admin/reports/summary'),null,2);
+  alerts.textContent=JSON.stringify(await api('/api/admin/alerts'),null,2);
+  const c=await api('/api/admin/config'); r1.value=c.rate100to200; r2.value=c.rate200to300; r3.value=c.rate300plus; b1.value=c.bonusMidPct; b2.value=c.bonusHighPct;
+  claims.textContent=JSON.stringify(await api('/api/admin/claims'),null,2);
+  const q=await api('/api/redeem/qr-link'); qr.innerHTML=`Open <a href="${q.url}">${q.url}</a> — print this as pump QR target`;
+}
+async function saveCfg(){
+  const c=await api('/api/admin/config');
+  c.rate100to200=+r1.value; c.rate200to300=+r2.value; c.rate300plus=+r3.value; c.bonusMidPct=+b1.value; c.bonusHighPct=+b2.value;
+  await api('/api/admin/config',{method:'PUT',body:JSON.stringify(c)}); refresh();
+}
+async function upPdf(){
+  const fd=new FormData(); fd.append('pdf', pdf.files[0]); if(rej.value) fd.append('rejectIdsCsv', rej.value);
+  const res=await fetch('/api/admin/pdf',{method:'POST',headers:authHeaders(),body:fd});
+  const data=await res.json(); pdfMsg.textContent=JSON.stringify(data); refresh();
+}
+</script>
+</div></body></html>

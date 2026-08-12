@@ -1,0 +1,47 @@
+<!doctype html><html><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Redeem</title><link rel="stylesheet" href="/css/app.css"/><script src="/js/api.js"></script></head>
+<body><div class="wrap">
+<h1>Redeem at pump</h1>
+<div class="card" id="box">
+  <p id="pumpName" class="muted">Loading…</p>
+  <div id="needLogin">
+    <label>Phone</label><input id="phone"/>
+    <button onclick="requestOtp()">Send OTP</button>
+    <label>OTP</label><input id="otp" placeholder="123456"/>
+    <button onclick="verify()">Login</button>
+  </div>
+  <div id="pay" style="display:none">
+    <p>Balance: <b id="bal"></b> coins</p>
+    <label>Coins</label><input id="coins" type="number" oninput="syncFromCoins()"/>
+    <label>Rupees</label><input id="rupees" type="number" step="0.01" oninput="syncFromRs()"/>
+    <button onclick="pay()">Pay / Redeem</button>
+  </div>
+  <p id="msg"></p>
+</div>
+<script>
+const params=new URLSearchParams(location.search); const pumpToken=params.get('token')||'pump-demo-token';
+async function init(){
+  const p=await api('/api/redeem/pump/'+pumpToken); pumpName.textContent=p.name;
+  if(token()) showPay();
+}
+function syncFromCoins(){ rupees.value=(Number(coins.value||0)/100).toFixed(2); }
+function syncFromRs(){ coins.value=Math.round(Number(rupees.value||0)*100); }
+async function requestOtp(){ await api('/api/auth/otp/request',{method:'POST',body:JSON.stringify({phone:phone.value})}); msg.textContent='OTP sent'; }
+async function verify(){
+  const d=await api('/api/auth/otp/verify',{method:'POST',body:JSON.stringify({phone:phone.value,otp:otp.value})});
+  localStorage.setItem('token',d.token); showPay();
+}
+async function showPay(){
+  needLogin.style.display='none'; pay.style.display='block';
+  const me=await api('/api/auth/me'); bal.textContent=me.walletCoins+' (₹'+(me.walletCoins/100).toFixed(2)+')';
+}
+async function pay(){
+  try{
+    const d=await api('/api/redeem/pay',{method:'POST',body:JSON.stringify({pumpToken,coins:Number(coins.value)})});
+    msg.className='ok'; msg.textContent=d.message+' Txn #'+d.txnId; showPay();
+  }catch(e){ msg.className='bad'; msg.textContent=e.message; }
+}
+init();
+</script>
+</div></body></html>
