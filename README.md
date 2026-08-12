@@ -65,8 +65,8 @@ curl -X PUT http://SERVER_IP:8080/api/admin/pump/geo \
 
 ## Git workflow
 - **Default branch:** `main`
-- Do **not** push commits directly to `main` (branch protection requires a PR + **1 approval**)
-- Work on a feature branch, push it, open a PR into `main`, get review/approve, then merge
+- Do **not** push commits directly to `main` (PR required)
+- Solo flow: you open the PR and you merge it (no second approver needed)
 
 ```bash
 git checkout main && git pull
@@ -74,5 +74,6 @@ git checkout -b feat/my-change
 # ... commit ...
 git push -u origin HEAD
 gh pr create --base main --fill
+gh pr merge --merge
 ```
 
