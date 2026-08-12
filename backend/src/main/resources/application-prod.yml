@@ -1,0 +1,23 @@
+spring:
+  config:
+    activate:
+      on-profile: prod
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://postgres:5432/discount}
+    username: ${DATABASE_USER:discount}
+    password: ${DATABASE_PASSWORD:discount}
+    driver-class-name: org.postgresql.Driver
+  h2:
+    console:
+      enabled: false
+  jpa:
+    hibernate:
+      ddl-auto: update
+app:
+  upload-dir: ${UPLOAD_DIR:/data/uploads}
+  otp-dev-code: ${OTP_DEV_CODE:}
+  gemini:
+    api-key: ${GEMINI_API_KEY}
+    model: ${GEMINI_MODEL:gemini-2.0-flash}
+server:
+  port: ${PORT:8080}

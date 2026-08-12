@@ -9,10 +9,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.Locale;
 
 @Service
 public class ClaimService {
@@ -22,22 +25,30 @@ public class ClaimService {
     private final BillClaimRepository claims;
     private final PhoneBlacklistRepository blacklist;
     private final AdminAlertRepository alerts;
+    private final GeminiBillOcrService ocr;
     private final Path uploadDir;
 
     public ClaimService(AppUserRepository users, VehicleLinkRepository vehicles, PumpRepository pumps,
                         BillClaimRepository claims, PhoneBlacklistRepository blacklist,
-                        AdminAlertRepository alerts, @Value("${app.upload-dir:./uploads}") String uploadDir) throws Exception {
-        this.users = users; this.vehicles = vehicles; this.pumps = pumps; this.claims = claims;
-        this.blacklist = blacklist; this.alerts = alerts;
+                        AdminAlertRepository alerts, GeminiBillOcrService ocr,
+                        @Value("${app.upload-dir:./uploads}") String uploadDir) throws Exception {
+        this.users = users;
+        this.vehicles = vehicles;
+        this.pumps = pumps;
+        this.claims = claims;
+        this.blacklist = blacklist;
+        this.alerts = alerts;
+        this.ocr = ocr;
         this.uploadDir = Paths.get(uploadDir).toAbsolutePath().normalize();
         Files.createDirectories(this.uploadDir);
     }
 
     @Transactional
     public BillClaim guestUpload(String phone, String vehicleNo, MultipartFile image,
-                                 Double lat, Double lng,
-                                 String receiptKey, String billNo, Double volume,
-                                 Boolean duplicateFlag) throws Exception {
+                                 Double lat, Double lng) throws Exception {
+        if (image == null || image.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Bill photo required");
+        }
         phone = AuthService.normalizePhone(phone);
         if (blacklist.existsByPhone(phone)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Phone not eligible to claim");
@@ -56,24 +67,39 @@ public class ClaimService {
         }
         double dist = GeoUtil.haversineMeters(pump.getLat(), pump.getLng(), lat, lng);
         if (dist > pump.getRadiusMeters()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Upload only within pump boundary (" + (int) pump.getRadiusMeters() + "m)");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Upload only within pump boundary (" + (int) pump.getRadiusMeters() + "m)");
         }
 
-        // OCR stub fields supplied by client until Vision is wired; validate rules here
-        if (Boolean.TRUE.equals(duplicateFlag) || (billNo != null && billNo.toUpperCase(Locale.ROOT).endsWith("-DUPLT"))) {
+        BillOcrResult extracted = ocr.extract(image);
+        String billNo = extracted.getBillNo();
+        if (extracted.isDuplicate()
+                || (billNo != null && billNo.toUpperCase(Locale.ROOT).endsWith("-DUPLT"))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Duplicate bill uploaded");
         }
-        if (receiptKey == null || receiptKey.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "FCC ID / Trans ID required");
+
+        String key = extracted.receiptKey();
+        if (key == null || key.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Could not read FCC ID / Trans ID from bill");
         }
-        String key = receiptKey.replaceAll("\\D", "");
-        if (key.length() > 9) key = key.substring(key.length() - 9);
-        if (key.length() < 9) key = String.format("%9s", key).replace(' ', '0');
         if (claims.existsByReceiptKey(key)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Bill already submitted");
         }
+
+        Double volume = extracted.getVolumeLitres();
         if (volume == null || volume <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Volume required");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not read volume from bill");
+        }
+
+        String billVehicle = extracted.getVehicleNo();
+        if (VehicleNormalizer.isBlankOnBill(billVehicle)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Vehicle number missing on bill (NotEntered)");
+        }
+        if (!VehicleNormalizer.normalize(billVehicle).equals(normVeh)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Vehicle on bill does not match entered vehicle");
         }
 
         String filename = key + "_" + System.currentTimeMillis() + ".jpg";
@@ -86,6 +112,7 @@ public class ClaimService {
         claim.setReceiptKey(key);
         claim.setVehicleNo(normVeh);
         claim.setVolumeLitres(volume);
+        claim.setSaleAmount(extracted.getSaleAmount());
         claim.setBillNo(billNo);
         claim.setImagePath(dest.toString());
         claim.setClaimLat(lat);

@@ -26,3 +26,6 @@ app:
   upload-dir: ./uploads
   otp-dev-code: "123456"
   session-header: X-Session-Token
+  gemini:
+    api-key: ${GEMINI_API_KEY:}
+    model: ${GEMINI_MODEL:gemini-2.0-flash}
