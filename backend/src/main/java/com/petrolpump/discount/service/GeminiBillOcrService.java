@@ -22,10 +22,9 @@ public class GeminiBillOcrService {
     private final String model;
 
     public GeminiBillOcrService(
-            ObjectMapper mapper,
             @Value("${app.gemini.api-key:}") String apiKey,
             @Value("${app.gemini.model:gemini-2.0-flash}") String model) {
-        this.mapper = mapper;
+        this.mapper = new ObjectMapper();
         this.apiKey = apiKey == null ? "" : apiKey.trim();
         this.model = model;
         this.restClient = RestClient.create();
