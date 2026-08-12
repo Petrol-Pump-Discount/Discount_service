@@ -5,3 +5,4 @@ backend/uploads/
 *.iml
 .DS_Store
 .env
+data/

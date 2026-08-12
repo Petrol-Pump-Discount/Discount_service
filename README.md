@@ -27,9 +27,10 @@ cp .env.example .env
 # edit .env → GEMINI_API_KEY=...
 ```
 
-2. Start:
+2. Build the jar on the host (Docker JDK build is flaky on some Mac VMs), then start:
 
 ```bash
+cd backend && ./mvnw -DskipTests package && cd ..
 docker compose --env-file .env up --build -d
 ```
 
