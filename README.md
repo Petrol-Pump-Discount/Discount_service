@@ -62,3 +62,17 @@ curl -X PUT http://SERVER_IP:8080/api/admin/pump/geo \
 3. Admin uploads daily SiteOmat PDF → coins credited  
 4. Driver scans pump QR → redeems coins for fuel  
 5. Employee sees live redeem feed (view only)
+
+## Git workflow
+- **Default branch:** `main`
+- Do **not** push commits directly to `main` (branch protection requires a PR + **1 approval**)
+- Work on a feature branch, push it, open a PR into `main`, get review/approve, then merge
+
+```bash
+git checkout main && git pull
+git checkout -b feat/my-change
+# ... commit ...
+git push -u origin HEAD
+gh pr create --base main --fill
+```
+
