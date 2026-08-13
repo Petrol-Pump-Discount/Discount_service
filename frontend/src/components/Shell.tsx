@@ -48,8 +48,13 @@ export function Shell({
 }) {
   return (
     <div className={`app-shell${wide ? ' wide-shell' : ''}`}>
-      <p className="eyebrow">NAGA SHREE</p>
-      <h1 className="brand">{title || 'Pump Loyalty'}</h1>
+      <div className="brand-row">
+        <img className="brand-icon" src="/icon.svg" width={48} height={48} alt="" />
+        <div>
+          <p className="eyebrow">NAGA SHREE</p>
+          <h1 className="brand">{title || 'Pump Loyalty'}</h1>
+        </div>
+      </div>
       <TopNav role={role} />
       {children}
     </div>
