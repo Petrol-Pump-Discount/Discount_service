@@ -111,7 +111,6 @@ Change `pump-demo-token` after go-live (update `pumps` row in Neon).
 | `DATABASE_URL` / `USER` / `PASSWORD` | Neon |
 | `GEMINI_API_KEY` | Bill OCR |
 | `OTP_PROVIDER=twilio` + Twilio SIDs | Real SMS OTP |
-| `ADMIN_PHONES` / `EMPLOYEE_PHONES` | Your real 10-digit staff mobiles (promoted on boot) |
 | `PUMP_LAT` / `PUMP_LNG` / `PUMP_RADIUS_METERS` | Geofence |
 
 Never commit `.env`. Rotate Twilio Auth Token if it was shared in chat.

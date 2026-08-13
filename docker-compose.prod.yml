@@ -29,8 +29,6 @@ services:
       PUMP_LAT: ${PUMP_LAT:-13.765987}
       PUMP_LNG: ${PUMP_LNG:-76.852652}
       PUMP_RADIUS_METERS: ${PUMP_RADIUS_METERS:-50}
-      ADMIN_PHONES: ${ADMIN_PHONES:-}
-      EMPLOYEE_PHONES: ${EMPLOYEE_PHONES:-}
     volumes:
       - uploads:/data/uploads
     expose:

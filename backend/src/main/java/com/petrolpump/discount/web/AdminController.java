@@ -24,14 +24,15 @@ public class AdminController {
     private final RedeemTransactionRepository redeems;
     private final AdminAlertRepository alerts;
     private final PumpRepository pumps;
+    private final AppUserRepository users;
 
     public AdminController(AuthService auth, PdfMatchService pdfMatch, LoyaltyConfigRepository configs,
                            PhoneBlacklistRepository blacklist, RejectIdRepository rejectIds,
                            BillClaimRepository claims, RedeemTransactionRepository redeems,
-                           AdminAlertRepository alerts, PumpRepository pumps) {
+                           AdminAlertRepository alerts, PumpRepository pumps, AppUserRepository users) {
         this.auth = auth; this.pdfMatch = pdfMatch; this.configs = configs; this.blacklist = blacklist;
         this.rejectIds = rejectIds; this.claims = claims; this.redeems = redeems; this.alerts = alerts;
-        this.pumps = pumps;
+        this.pumps = pumps; this.users = users;
     }
 
     private void admin(String token) { auth.requireRole(token, UserRole.ADMIN); }
@@ -114,6 +115,64 @@ public class AdminController {
         if (body.get("lng") != null) p.setLng(body.get("lng"));
         if (body.get("radiusMeters") != null) p.setRadiusMeters(body.get("radiusMeters"));
         return pumps.save(p);
+    }
+
+    @GetMapping("/users")
+    public List<Map<String, Object>> listUsers(@RequestHeader("X-Session-Token") String token) {
+        admin(token);
+        return users.findAll().stream()
+                .sorted(Comparator.comparing(AppUser::getPhone))
+                .map(u -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("id", u.getId());
+                    m.put("phone", u.getPhone());
+                    m.put("name", u.getName() == null ? "" : u.getName());
+                    m.put("role", u.getRole().name());
+                    m.put("walletCoins", u.getWalletCoins());
+                    return m;
+                })
+                .collect(Collectors.toList());
+    }
+
+    @PutMapping("/users/role")
+    public Map<String, Object> setRole(@RequestHeader("X-Session-Token") String token,
+                                       @RequestBody Map<String, String> body) {
+        AppUser actor = auth.requireRole(token, UserRole.ADMIN);
+        String phone = AuthService.normalizePhone(body.get("phone"));
+        UserRole role;
+        try {
+            role = UserRole.valueOf(body.getOrDefault("role", "").trim().toUpperCase(Locale.ROOT));
+        } catch (Exception ex) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Role must be DRIVER, EMPLOYEE, or ADMIN");
+        }
+
+        AppUser user = users.findByPhone(phone).orElseGet(() -> {
+            AppUser u = new AppUser();
+            u.setPhone(phone);
+            u.setName(body.getOrDefault("name", "").isBlank() ? phone : body.get("name"));
+            return u;
+        });
+
+        if (actor.getPhone().equals(phone) && role != UserRole.ADMIN) {
+            long otherAdmins = users.findAll().stream()
+                    .filter(u -> u.getRole() == UserRole.ADMIN && !u.getPhone().equals(phone))
+                    .count();
+            if (otherAdmins == 0) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "Cannot remove the last ADMIN — promote someone else first");
+            }
+        }
+
+        user.setRole(role);
+        if (body.get("name") != null && !body.get("name").isBlank()
+                && (user.getName() == null || user.getName().isBlank())) {
+            user.setName(body.get("name"));
+        }
+        users.save(user);
+        return Map.of("phone", user.getPhone(), "role", user.getRole().name(),
+                "name", user.getName() == null ? "" : user.getName());
     }
 
     private Map<String, Object> claimDto(BillClaim c) {

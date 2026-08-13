@@ -63,7 +63,7 @@ See [docs/HOSTING.md](docs/HOSTING.md).
 | Employee | Live redeem feed (view only) |
 | Admin | PDF, rates, geo, blacklist, claims |
 
-Staff phones: set `ADMIN_PHONES` / `EMPLOYEE_PHONES` in `.env` (10-digit, comma-separated). On boot those numbers become ADMIN / EMPLOYEE. If unset, demo seeds `9999999999` / `8888888888` are used for local only.
+Staff roles live in DB (`app_users.role`). Set via Admin → Staff, or SQL. No env-based role promotion.
 
 ## CI/CD
 
