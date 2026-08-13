@@ -63,7 +63,7 @@ See [docs/HOSTING.md](docs/HOSTING.md).
 | Employee | Live redeem feed (view only) |
 | Admin | PDF, rates, geo, blacklist, claims |
 
-Seed phones (after first boot): Admin `9999999999` · Employee `8888888888`
+Staff phones: set `ADMIN_PHONES` / `EMPLOYEE_PHONES` in `.env` (10-digit, comma-separated). On boot those numbers become ADMIN / EMPLOYEE. If unset, demo seeds `9999999999` / `8888888888` are used for local only.
 
 ## CI/CD
 

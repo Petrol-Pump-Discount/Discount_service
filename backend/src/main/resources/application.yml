@@ -39,6 +39,8 @@ app:
     lat: 13.765987
     lng: 76.852652
     radius-meters: 50
+  admin-phones: ${ADMIN_PHONES:}
+  employee-phones: ${EMPLOYEE_PHONES:}
   gemini:
     api-key: ${GEMINI_API_KEY:}
     model: ${GEMINI_MODEL:gemini-flash-latest}
