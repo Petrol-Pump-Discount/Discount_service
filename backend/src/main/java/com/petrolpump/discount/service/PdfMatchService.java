@@ -2,6 +2,8 @@ package com.petrolpump.discount.service;
 
 import com.petrolpump.discount.domain.*;
 import com.petrolpump.discount.repo.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -15,6 +17,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class PdfMatchService {
+    private static final Logger log = LoggerFactory.getLogger(PdfMatchService.class);
+
     private final BillClaimRepository claims;
     private final RejectIdRepository rejectIds;
     private final LoyaltyConfigRepository configs;
@@ -31,11 +35,16 @@ public class PdfMatchService {
     @Transactional
     public Map<String, Object> processPdf(MultipartFile pdf, List<String> extraRejectIds) throws Exception {
         String text = new String(pdf.getBytes(), StandardCharsets.ISO_8859_1);
-        // Also try UTF-8
         String utf = new String(pdf.getBytes(), StandardCharsets.UTF_8);
         if (utf.length() > text.length()) text = utf;
 
         Set<String> receipts = extractReceiptNos(text);
+        log.info("PDF match start file={} bytes={} receiptKeysParsed={} sample={}",
+                pdf.getOriginalFilename(),
+                pdf.getSize(),
+                receipts.size(),
+                receipts.stream().limit(30).collect(Collectors.joining(",")));
+
         if (extraRejectIds != null) {
             for (String r : extraRejectIds) {
                 String key = last9(r);
@@ -43,6 +52,7 @@ public class PdfMatchService {
                     RejectId row = new RejectId();
                     row.setReceiptKey(key);
                     rejectIds.save(row);
+                    log.info("PDF match force-reject id added key={}", key);
                 }
             }
         }
@@ -50,13 +60,28 @@ public class PdfMatchService {
         LoyaltyConfig cfg = configs.findById(1L).orElseGet(() -> configs.save(new LoyaltyConfig()));
         int matched = 0, rejected = 0;
         List<BillClaim> queued = claims.findByStatusOrderByCreatedAtAsc(ClaimStatus.QUEUED);
+        log.info("PDF match queuedClaims={}", queued.size());
+
         for (BillClaim c : queued) {
             String key = c.getReceiptKey();
-            if (rejectIds.existsByReceiptKey(key) || !receipts.contains(key)) {
+            boolean inRejectList = rejectIds.existsByReceiptKey(key);
+            boolean inPdf = receipts.contains(key);
+            if (inRejectList || !inPdf) {
+                String reason = inRejectList ? "In reject list" : "Not found in PDF Receipt No";
                 c.setStatus(ClaimStatus.REJECTED);
-                c.setRejectReason(rejectIds.existsByReceiptKey(key) ? "In reject list" : "Not found in PDF Receipt No");
+                c.setRejectReason(reason);
                 c.setDecidedAt(Instant.now());
                 rejected++;
+                log.info("PDF match REJECT claimId={} phone={} vehicle={} billNo={} receiptKey={} volume={} reason={} inPdf={} inRejectList={}",
+                        c.getId(),
+                        c.getUser().getPhone(),
+                        c.getVehicleNo(),
+                        c.getBillNo(),
+                        key,
+                        c.getVolumeLitres(),
+                        reason,
+                        inPdf,
+                        inRejectList);
                 continue;
             }
             Instant since = BusinessDay.startOfTrailingDays(30);
@@ -70,6 +95,8 @@ public class PdfMatchService {
             u.setWalletCoins(u.getWalletCoins() + credit);
             users.save(u);
             matched++;
+            log.info("PDF match APPROVE claimId={} phone={} receiptKey={} volume={} coins={} prior30dVol={}",
+                    c.getId(), c.getUser().getPhone(), key, c.getVolumeLitres(), credit, prior);
         }
 
         DailyReportUpload rep = new DailyReportUpload();
@@ -78,6 +105,8 @@ public class PdfMatchService {
         rep.setMatchedCount(matched);
         rep.setRejectedCount(rejected);
         reports.save(rep);
+
+        log.info("PDF match done approved={} rejected={} receiptsParsed={}", matched, rejected, receipts.size());
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("receiptsParsed", receipts.size());
