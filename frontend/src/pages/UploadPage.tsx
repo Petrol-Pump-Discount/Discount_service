@@ -39,6 +39,7 @@ export function UploadPage({ role }: { role?: string }) {
   const [result, setResult] = useState<UploadRes | null>(null)
   const [busy, setBusy] = useState(false)
   const [submitLocked, setSubmitLocked] = useState(false)
+  const submitLockedRef = useRef(false)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const secure = isSecure()
   const guest = !signedInPhone
@@ -91,11 +92,17 @@ export function UploadPage({ role }: { role?: string }) {
     requestLocation()
   }, [])
 
+  function unlockForNewPhoto() {
+    submitLockedRef.current = false
+    setSubmitLocked(false)
+    setResult(null)
+  }
+
   function clearPhoto() {
     setBlob(null)
     setPreview(null)
-    setSubmitLocked(false)
-    setResult(null)
+    unlockForNewPhoto()
+    if (fileRef.current) fileRef.current.value = ''
   }
 
   async function startLiveCamera() {
@@ -148,8 +155,7 @@ export function UploadPage({ role }: { role?: string }) {
     canvas.toBlob(
       (b) => {
         if (!b) return
-        setSubmitLocked(false)
-        setResult(null)
+        unlockForNewPhoto()
         setBlob(b)
         setPreview(URL.createObjectURL(b))
         stream?.getTracks().forEach((t) => t.stop())
@@ -167,8 +173,7 @@ export function UploadPage({ role }: { role?: string }) {
       return
     }
     setErr('')
-    setSubmitLocked(false)
-    setResult(null)
+    unlockForNewPhoto()
     setBlob(file)
     setPreview(URL.createObjectURL(file))
     stream?.getTracks().forEach((t) => t.stop())
@@ -177,7 +182,7 @@ export function UploadPage({ role }: { role?: string }) {
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if (submitLocked || busy) return
+    if (submitLockedRef.current || busy || !blob) return
     setTouched({ phone: true, vehicle: true })
     if (guest) {
       const pErr = validatePhone(phone)
@@ -191,10 +196,6 @@ export function UploadPage({ role }: { role?: string }) {
       setErr(vErr)
       return
     }
-    if (!blob) {
-      setErr('Capture the bill photo first')
-      return
-    }
     if (lat == null || lng == null) {
       setErr(geoErr || 'Allow location first')
       requestLocation()
@@ -202,6 +203,8 @@ export function UploadPage({ role }: { role?: string }) {
     }
     setErr('')
     setBusy(true)
+    submitLockedRef.current = true
+    setSubmitLocked(true)
     try {
       const fd = new FormData()
       if (guest) fd.append('phone', normalizePhone(phone))
@@ -215,8 +218,11 @@ export function UploadPage({ role }: { role?: string }) {
         auth: !guest,
       })
       setResult(res)
-      setSubmitLocked(true)
+      setBlob(null) // must take a new photo before Submit works again
+      if (fileRef.current) fileRef.current.value = ''
     } catch (ex) {
+      submitLockedRef.current = false
+      setSubmitLocked(false)
       setErr(ex instanceof Error ? ex.message : 'Upload failed')
     } finally {
       setBusy(false)
