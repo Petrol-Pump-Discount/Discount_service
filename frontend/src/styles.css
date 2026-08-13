@@ -1,17 +1,17 @@
 :root {
-  --bg0: #071f18;
-  --bg1: #0b3d2e;
-  --bg2: #125c45;
-  --accent: #f0a202;
-  --accent-deep: #d97706;
-  --cream: #f7f1e3;
-  --ink: #10231c;
-  --muted: #5b6f66;
-  --card: rgba(247, 241, 227, 0.94);
+  --bg0: #021a33;
+  --bg1: #044A89;
+  --bg2: #0660b0;
+  --accent: #FF671F;
+  --accent-deep: #e05510;
+  --cream: #F5F7FA;
+  --ink: #0b1f33;
+  --muted: #5a6b7d;
+  --card: rgba(245, 247, 250, 0.96);
   --danger: #b91c1c;
   --ok: #15803d;
   --radius: 18px;
-  --shadow: 0 18px 40px rgba(7, 31, 24, 0.28);
+  --shadow: 0 18px 40px rgba(2, 26, 51, 0.35);
   font-family: "DM Sans", system-ui, sans-serif;
   color: var(--ink);
   background: var(--bg0);
@@ -25,9 +25,9 @@
 html, body, #root { min-height: 100%; margin: 0; }
 body {
   background:
-    radial-gradient(1200px 600px at 10% -10%, rgba(240, 162, 2, 0.22), transparent 55%),
-    radial-gradient(900px 500px at 100% 0%, rgba(18, 92, 69, 0.55), transparent 50%),
-    linear-gradient(165deg, #071f18 0%, #0b3d2e 45%, #083528 100%);
+    radial-gradient(1100px 560px at 8% -8%, rgba(255, 103, 31, 0.28), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(4, 74, 137, 0.65), transparent 50%),
+    linear-gradient(165deg, #021a33 0%, #044A89 48%, #032f58 100%);
   background-attachment: fixed;
 }
 
@@ -47,12 +47,26 @@ button, input, select, textarea {
   max-width: 960px;
 }
 
+.brand-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 0.15rem;
+}
+
+.brand-mark {
+  flex-shrink: 0;
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+  background: #044A89;
+}
+
 .brand {
   font-family: Syne, "DM Sans", sans-serif;
   font-weight: 800;
   letter-spacing: -0.03em;
   color: var(--cream);
-  font-size: clamp(1.8rem, 6vw, 2.4rem);
+  font-size: clamp(1.55rem, 5.5vw, 2.15rem);
   margin: 0;
 }
 
@@ -60,13 +74,14 @@ button, input, select, textarea {
   color: var(--accent);
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
-  margin: 0 0 0.35rem;
+  margin: 0 0 0.2rem;
 }
 
+
 .lead {
-  color: rgba(247, 241, 227, 0.82);
+  color: rgba(245, 247, 250, 0.88);
   margin: 0.4rem 0 0;
   font-size: 1.02rem;
 }
@@ -161,7 +176,7 @@ select[aria-invalid="true"] {
 .btn-primary {
   background: linear-gradient(135deg, var(--accent), var(--accent-deep));
   color: #1a1200;
-  box-shadow: 0 10px 24px rgba(217, 119, 6, 0.35);
+  box-shadow: 0 10px 24px rgba(255, 103, 31, 0.4);
 }
 .btn-primary:hover:not(:disabled) { filter: brightness(1.04); }
 
@@ -218,7 +233,7 @@ select[aria-invalid="true"] {
   gap: 1rem;
   padding: 1rem 1.1rem;
   border-radius: 16px;
-  background: linear-gradient(135deg, #125c45, #0b3d2e);
+  background: linear-gradient(135deg, #0660b0, #044A89 55%, #032f58);
   color: var(--cream);
   margin-top: 1rem;
 }

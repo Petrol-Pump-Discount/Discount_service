@@ -3,15 +3,21 @@
   "short_name": "NAGA SHREE",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0b3d2e",
-  "theme_color": "#0b3d2e",
-  "description": "Earn coins on fuel bills. Redeem at the pump.",
+  "background_color": "#044A89",
+  "theme_color": "#044A89",
+  "description": "IndianOil NAGA SHREE pump loyalty — earn coins, redeem fuel.",
   "icons": [
     {
       "src": "/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ]
 }

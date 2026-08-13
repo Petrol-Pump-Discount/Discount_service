@@ -10,12 +10,8 @@ export function TopNav({ role }: { role?: string }) {
         Home
       </NavLink>
       <NavLink to="/upload">Upload</NavLink>
-      {loggedIn && (
-        <NavLink to="/account">Wallet</NavLink>
-      )}
-      {(role === 'ADMIN' || role === 'EMPLOYEE') && (
-        <NavLink to="/employee">Live</NavLink>
-      )}
+      {loggedIn && <NavLink to="/account">Wallet</NavLink>}
+      {(role === 'ADMIN' || role === 'EMPLOYEE') && <NavLink to="/employee">Live</NavLink>}
       {role === 'ADMIN' && <NavLink to="/admin">Admin</NavLink>}
       {loggedIn ? (
         <button
@@ -48,8 +44,13 @@ export function Shell({
 }) {
   return (
     <div className={`app-shell${wide ? ' wide-shell' : ''}`}>
-      <p className="eyebrow">NAGA SHREE</p>
-      <h1 className="brand">{title || 'Pump Loyalty'}</h1>
+      <header className="brand-bar">
+        <img className="brand-mark" src="/icon.svg" width={44} height={44} alt="NAGA SHREE" />
+        <div>
+          <p className="eyebrow">IndianOil · NAGA SHREE</p>
+          <h1 className="brand">{title || 'Pump Loyalty'}</h1>
+        </div>
+      </header>
       <TopNav role={role} />
       {children}
     </div>
