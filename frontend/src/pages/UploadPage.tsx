@@ -17,8 +17,13 @@ type UploadRes = {
   message: string
 }
 
+function isSecure(): boolean {
+  return typeof window !== 'undefined' && window.isSecureContext
+}
+
 export function UploadPage({ role }: { role?: string }) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [blob, setBlob] = useState<Blob | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
@@ -31,6 +36,7 @@ export function UploadPage({ role }: { role?: string }) {
   const [result, setResult] = useState<UploadRes | null>(null)
   const [busy, setBusy] = useState(false)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const secure = isSecure()
 
   const phoneErr = useMemo(() => (touched.phone ? validatePhone(phone) : null), [phone, touched.phone])
   const vehicleErr = useMemo(
@@ -38,26 +44,50 @@ export function UploadPage({ role }: { role?: string }) {
     [vehicleNo, touched.vehicle],
   )
 
-  useEffect(() => {
+  function requestLocation() {
     if (!navigator.geolocation) {
-      setGeoErr('Location unavailable')
+      setGeoErr('Location unavailable on this device')
       return
     }
+    setGeoErr('')
     navigator.geolocation.getCurrentPosition(
       (p) => {
         setLat(p.coords.latitude)
         setLng(p.coords.longitude)
+        setGeoErr('')
       },
-      () => setGeoErr('Allow location — must be at the pump'),
-      { enableHighAccuracy: true, timeout: 15000 },
+      (e) => {
+        if (!secure) {
+          setGeoErr('Location needs HTTPS — open the site via your domain (Cloudflare)')
+        } else if (e.code === e.PERMISSION_DENIED) {
+          setGeoErr('Location permission denied — allow it in Chrome site settings')
+        } else {
+          setGeoErr('Could not get location — try again at the pump')
+        }
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 },
     )
+  }
+
+  useEffect(() => {
+    requestLocation()
   }, [])
 
-  async function startCamera() {
+  async function startLiveCamera() {
     setErr('')
     setResult(null)
     setBlob(null)
     setPreview(null)
+    if (!secure) {
+      setErr('Camera in-browser needs HTTPS. Use “Take bill photo” below, or open via your Cloudflare domain.')
+      fileRef.current?.click()
+      return
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setErr('Camera API not available — use Take bill photo')
+      fileRef.current?.click()
+      return
+    }
     try {
       const s = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' } },
@@ -68,8 +98,14 @@ export function UploadPage({ role }: { role?: string }) {
         videoRef.current.srcObject = s
         await videoRef.current.play()
       }
-    } catch {
-      setErr('Camera required — gallery upload not allowed')
+    } catch (ex) {
+      const name = ex instanceof DOMException ? ex.name : ''
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        setErr('Camera permission denied — allow Camera for this site in Chrome settings')
+      } else {
+        setErr('Could not open live camera — use Take bill photo instead')
+      }
+      fileRef.current?.click()
     }
   }
 
@@ -99,6 +135,20 @@ export function UploadPage({ role }: { role?: string }) {
     )
   }
 
+  function onNativePhoto(file: File | undefined) {
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setErr('Please take a photo of the bill')
+      return
+    }
+    setErr('')
+    setResult(null)
+    setBlob(file)
+    setPreview(URL.createObjectURL(file))
+    stream?.getTracks().forEach((t) => t.stop())
+    setStream(null)
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault()
     setTouched({ phone: true, vehicle: true })
@@ -113,7 +163,8 @@ export function UploadPage({ role }: { role?: string }) {
       return
     }
     if (lat == null || lng == null) {
-      setErr(geoErr || 'Waiting for location…')
+      setErr(geoErr || 'Allow location first')
+      requestLocation()
       return
     }
     setErr('')
@@ -145,6 +196,12 @@ export function UploadPage({ role }: { role?: string }) {
   return (
     <Shell role={role} title="Upload bill">
       <div className="card">
+        {!secure && (
+          <p className="err" style={{ marginTop: 0 }}>
+            This page is HTTP only. Chrome blocks live camera/GPS on plain IP. Use “Take bill photo”, or put the
+            site behind Cloudflare HTTPS for full permissions.
+          </p>
+        )}
         <form className="stack" onSubmit={submit} noValidate>
           <TextInput
             label="Registered mobile"
@@ -170,10 +227,25 @@ export function UploadPage({ role }: { role?: string }) {
           />
 
           <div className="camera-box">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style={{ display: 'none' }}
+              onChange={(e) => onNativePhoto(e.target.files?.[0])}
+            />
             {!preview && !stream && (
-              <button type="button" className="btn btn-dark" onClick={() => void startCamera()}>
-                Open camera
-              </button>
+              <div className="stack">
+                <button type="button" className="btn btn-primary" onClick={() => fileRef.current?.click()}>
+                  Take bill photo
+                </button>
+                {secure && (
+                  <button type="button" className="btn btn-dark" onClick={() => void startLiveCamera()}>
+                    Live camera
+                  </button>
+                )}
+              </div>
             )}
             {stream && (
               <>
@@ -189,7 +261,15 @@ export function UploadPage({ role }: { role?: string }) {
               <>
                 <img src={preview} alt="Bill" />
                 <div className="row" style={{ justifyContent: 'center', marginTop: 10 }}>
-                  <button type="button" className="btn btn-danger" onClick={() => void startCamera()}>
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={() => {
+                      setPreview(null)
+                      setBlob(null)
+                      fileRef.current?.click()
+                    }}
+                  >
                     Retake
                   </button>
                 </div>
@@ -197,11 +277,16 @@ export function UploadPage({ role }: { role?: string }) {
             )}
           </div>
 
-          <div>
+          <div className="row">
             {lat != null && lng != null ? (
               <span className="gps-pill">Location ready</span>
             ) : (
               <span className={`gps-pill ${geoErr ? 'bad' : 'wait'}`}>{geoErr || 'Getting location…'}</span>
+            )}
+            {lat == null && (
+              <button type="button" className="btn btn-dark" onClick={requestLocation}>
+                Allow location
+              </button>
             )}
           </div>
 
