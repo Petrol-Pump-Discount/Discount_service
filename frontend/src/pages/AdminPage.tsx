@@ -47,6 +47,7 @@ type Summary = {
   queuedClaims: number
 }
 type Blacklist = { id: number; phone: string; reason: string }
+type StaffUser = { id: number; phone: string; name: string; role: string; walletCoins: number }
 
 const CONFIG_FIELDS = [
   ['rate100to200', 'Paise/L 100–200', 0, 1000],
@@ -66,6 +67,9 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
   const [blacklist, setBlacklist] = useState<Blacklist[]>([])
+  const [staff, setStaff] = useState<StaffUser[]>([])
+  const [staffPhone, setStaffPhone] = useState('')
+  const [staffRole, setStaffRole] = useState('EMPLOYEE')
   const [blPhone, setBlPhone] = useState('')
   const [blReason, setBlReason] = useState('')
   const [rejectIds, setRejectIds] = useState('')
@@ -82,6 +86,10 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
   const blPhoneErr = useMemo(
     () => (touched.blPhone ? validatePhone(blPhone) : null),
     [blPhone, touched.blPhone],
+  )
+  const staffPhoneErr = useMemo(
+    () => (touched.staffPhone ? validatePhone(staffPhone) : null),
+    [staffPhone, touched.staffPhone],
   )
   const blReasonErr = useMemo(
     () => (touched.blReason ? validateReason(blReason) : null),
@@ -114,6 +122,7 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
       setSummary(await api<Summary>('/api/admin/reports/summary'))
       setAlerts(await api<Alert[]>('/api/admin/alerts'))
       setBlacklist(await api<Blacklist[]>('/api/admin/blacklist'))
+      setStaff(await api<StaffUser[]>('/api/admin/users'))
       setClaims(await api<Claim[]>(`/api/admin/claims?status=${statusFilter}`))
       const qr = await api<{ url: string; token: string }>('/api/redeem/qr-link', { auth: false })
       setQrUrl(`${window.location.origin}/redeem?token=${qr.token}`)
@@ -202,6 +211,43 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
       setBlReason('')
       setTouched((t) => ({ ...t, blPhone: false, blReason: false }))
       setMsg('Blacklisted')
+      await load()
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'Failed')
+    }
+  }
+
+  async function saveStaffRole(e: FormEvent) {
+    e.preventDefault()
+    setTouched((t) => ({ ...t, staffPhone: true }))
+    const pErr = validatePhone(staffPhone)
+    if (pErr) {
+      setErr(pErr)
+      return
+    }
+    setErr('')
+    try {
+      await api('/api/admin/users/role', {
+        method: 'PUT',
+        body: JSON.stringify({ phone: normalizePhone(staffPhone), role: staffRole }),
+      })
+      setStaffPhone('')
+      setTouched((t) => ({ ...t, staffPhone: false }))
+      setMsg(`Role set: ${normalizePhone(staffPhone)} → ${staffRole}`)
+      await load()
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'Failed')
+    }
+  }
+
+  async function changeExistingRole(phone: string, role: string) {
+    setErr('')
+    try {
+      await api('/api/admin/users/role', {
+        method: 'PUT',
+        body: JSON.stringify({ phone, role }),
+      })
+      setMsg(`${phone} → ${role}`)
       await load()
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'Failed')
@@ -335,6 +381,63 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
             Update
           </button>
         </form>
+      </div>
+
+      <div className="card">
+        <h3>Staff roles</h3>
+        <p className="muted">Stored in DB. Promote / demote by phone.</p>
+        <form className="stack" onSubmit={saveStaffRole} noValidate>
+          <TextInput
+            label="Mobile"
+            inputMode="numeric"
+            maxLength={10}
+            value={staffPhone}
+            error={staffPhoneErr}
+            placeholder="9448166221"
+            onBlur={() => setTouched((t) => ({ ...t, staffPhone: true }))}
+            onChange={(e) => setStaffPhone(normalizePhone(e.target.value))}
+          />
+          <label className="field">
+            <span className="field-label">Role</span>
+            <select value={staffRole} onChange={(e) => setStaffRole(e.target.value)}>
+              <option value="ADMIN">ADMIN</option>
+              <option value="EMPLOYEE">EMPLOYEE</option>
+              <option value="DRIVER">DRIVER</option>
+            </select>
+          </label>
+          <button className="btn btn-primary" type="submit" disabled={!!validatePhone(staffPhone)}>
+            Set role
+          </button>
+        </form>
+        <div className="table-wrap" style={{ marginTop: 12 }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Phone</th>
+                <th>Name</th>
+                <th>Role</th>
+              </tr>
+            </thead>
+            <tbody>
+              {staff.map((u) => (
+                <tr key={u.id}>
+                  <td>{u.phone}</td>
+                  <td>{u.name || '—'}</td>
+                  <td>
+                    <select
+                      value={u.role}
+                      onChange={(e) => void changeExistingRole(u.phone, e.target.value)}
+                    >
+                      <option value="ADMIN">ADMIN</option>
+                      <option value="EMPLOYEE">EMPLOYEE</option>
+                      <option value="DRIVER">DRIVER</option>
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="card">
