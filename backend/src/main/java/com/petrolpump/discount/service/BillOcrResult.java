@@ -52,7 +52,7 @@ public class BillOcrResult {
         return n.isEmpty() ? null : n;
     }
 
-    private static String normalizeReceiptDigits(String src) {
+    public static String normalizeReceiptDigits(String src) {
         if (src == null || src.isBlank()) return null;
         String d = src.replaceAll("\\D", "");
         if (d.isEmpty()) return null;
