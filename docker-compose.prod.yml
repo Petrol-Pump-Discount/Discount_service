@@ -21,7 +21,7 @@ services:
       OTP_PROVIDER: ${OTP_PROVIDER:-twilio}
       OTP_TTL_SECONDS: ${OTP_TTL_SECONDS:-300}
       OTP_MAX_ATTEMPTS: ${OTP_MAX_ATTEMPTS:-5}
-      OTP_SMS_TEMPLATE: ${OTP_SMS_TEMPLATE:-Your OTP for Nagashree Service station Login is: {otp}}
+      OTP_SMS_TEMPLATE: ${OTP_SMS_TEMPLATE:-Your OTP for Nagashree Service Station Login is: {otp}}
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
       TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER}
