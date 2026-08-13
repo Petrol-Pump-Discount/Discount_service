@@ -127,6 +127,8 @@ public class ClaimService {
         claim.setUser(user);
         claim.setPump(pump);
         claim.setReceiptKey(key);
+        claim.setFccId(BillOcrResult.normalizeReceiptDigits(extracted.getFccId()));
+        claim.setTransId(BillOcrResult.normalizeReceiptDigits(extracted.getTransId()));
         claim.setVehicleNo(normVeh);
         claim.setVolumeLitres(volume);
         claim.setSaleAmount(extracted.getSaleAmount());

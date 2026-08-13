@@ -15,6 +15,8 @@ public class BillClaim {
     private double volumeLitres;
     private Double saleAmount;
     private String billNo;
+    @Column(length = 32) private String fccId;
+    @Column(length = 32) private String transId;
     private String imagePath;
     private Double claimLat;
     private Double claimLng;
@@ -42,6 +44,10 @@ public class BillClaim {
     public void setSaleAmount(Double saleAmount) { this.saleAmount = saleAmount; }
     public String getBillNo() { return billNo; }
     public void setBillNo(String billNo) { this.billNo = billNo; }
+    public String getFccId() { return fccId; }
+    public void setFccId(String fccId) { this.fccId = fccId; }
+    public String getTransId() { return transId; }
+    public void setTransId(String transId) { this.transId = transId; }
     public String getImagePath() { return imagePath; }
     public void setImagePath(String imagePath) { this.imagePath = imagePath; }
     public Double getClaimLat() { return claimLat; }

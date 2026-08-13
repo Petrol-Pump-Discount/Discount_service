@@ -2,13 +2,15 @@ package com.petrolpump.discount.service;
 
 import com.petrolpump.discount.domain.*;
 import com.petrolpump.discount.repo.*;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -18,6 +20,8 @@ import java.util.stream.Collectors;
 @Service
 public class PdfMatchService {
     private static final Logger log = LoggerFactory.getLogger(PdfMatchService.class);
+    private static final Pattern LABELED_TXN = Pattern.compile(
+            "(?i)(?:transaction\\s*id|trns\\.?\\s*id|txn\\s*id)\\s*[:#\\-]?\\s*(\\d{6,})");
 
     private final BillClaimRepository claims;
     private final RejectIdRepository rejectIds;
@@ -34,21 +38,18 @@ public class PdfMatchService {
 
     @Transactional
     public Map<String, Object> processPdf(MultipartFile pdf, List<String> extraRejectIds) throws Exception {
-        String text = new String(pdf.getBytes(), StandardCharsets.ISO_8859_1);
-        String utf = new String(pdf.getBytes(), StandardCharsets.UTF_8);
-        if (utf.length() > text.length()) text = utf;
-
-        Set<String> receipts = extractReceiptNos(text);
-        log.info("PDF match start file={} bytes={} receiptKeysParsed={} sample={}",
+        String text = extractPdfText(pdf.getBytes());
+        Set<String> txnIds = extractTransactionIds(text);
+        log.info("PDF match start file={} bytes={} transactionIdsParsed={} sample={}",
                 pdf.getOriginalFilename(),
                 pdf.getSize(),
-                receipts.size(),
-                receipts.stream().limit(30).collect(Collectors.joining(",")));
+                txnIds.size(),
+                txnIds.stream().limit(30).collect(Collectors.joining(",")));
 
         if (extraRejectIds != null) {
             for (String r : extraRejectIds) {
                 String key = last9(r);
-                if (!rejectIds.existsByReceiptKey(key)) {
+                if (key != null && !rejectIds.existsByReceiptKey(key)) {
                     RejectId row = new RejectId();
                     row.setReceiptKey(key);
                     rejectIds.save(row);
@@ -63,27 +64,23 @@ public class PdfMatchService {
         log.info("PDF match queuedClaims={}", queued.size());
 
         for (BillClaim c : queued) {
-            String key = c.getReceiptKey();
-            boolean inRejectList = rejectIds.existsByReceiptKey(key);
-            boolean inPdf = receipts.contains(key);
+            List<String> billKeys = billMatchKeys(c);
+            boolean inRejectList = billKeys.stream().anyMatch(rejectIds::existsByReceiptKey);
+            String matchedKey = billKeys.stream().filter(txnIds::contains).findFirst().orElse(null);
+            boolean inPdf = matchedKey != null;
+
             if (inRejectList || !inPdf) {
-                String reason = inRejectList ? "In reject list" : "Not found in PDF Receipt No";
+                String reason = inRejectList ? "In reject list" : "Not found in PDF Transaction ID";
                 c.setStatus(ClaimStatus.REJECTED);
                 c.setRejectReason(reason);
                 c.setDecidedAt(Instant.now());
                 rejected++;
-                log.info("PDF match REJECT claimId={} phone={} vehicle={} billNo={} receiptKey={} volume={} reason={} inPdf={} inRejectList={}",
-                        c.getId(),
-                        c.getUser().getPhone(),
-                        c.getVehicleNo(),
-                        c.getBillNo(),
-                        key,
-                        c.getVolumeLitres(),
-                        reason,
-                        inPdf,
-                        inRejectList);
+                log.info("PDF match REJECT claimId={} phone={} billNo={} receiptKey={} fccId={} transId={} billKeys={} reason={} inPdf={}",
+                        c.getId(), c.getUser().getPhone(), c.getBillNo(), c.getReceiptKey(),
+                        c.getFccId(), c.getTransId(), billKeys, reason, inPdf);
                 continue;
             }
+
             Instant since = BusinessDay.startOfTrailingDays(30);
             double prior = claims.sumApprovedVolumeSince(c.getUser(), since);
             long base = CoinCalculator.baseCoins(c.getVolumeLitres(), cfg);
@@ -95,37 +92,116 @@ public class PdfMatchService {
             u.setWalletCoins(u.getWalletCoins() + credit);
             users.save(u);
             matched++;
-            log.info("PDF match APPROVE claimId={} phone={} receiptKey={} volume={} coins={} prior30dVol={}",
-                    c.getId(), c.getUser().getPhone(), key, c.getVolumeLitres(), credit, prior);
+            log.info("PDF match APPROVE claimId={} phone={} matchedTxnId={} volume={} coins={}",
+                    c.getId(), c.getUser().getPhone(), matchedKey, c.getVolumeLitres(), credit);
         }
 
         DailyReportUpload rep = new DailyReportUpload();
         rep.setFileName(pdf.getOriginalFilename());
-        rep.setReceiptKeysCsv(String.join(",", receipts));
+        rep.setReceiptKeysCsv(String.join(",", txnIds));
         rep.setMatchedCount(matched);
         rep.setRejectedCount(rejected);
         reports.save(rep);
 
-        log.info("PDF match done approved={} rejected={} receiptsParsed={}", matched, rejected, receipts.size());
+        log.info("PDF match done approved={} rejected={} transactionIdsParsed={}", matched, rejected, txnIds.size());
 
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("receiptsParsed", receipts.size());
+        out.put("transactionIdsParsed", txnIds.size());
+        out.put("receiptsParsed", txnIds.size()); // backward-compatible for admin UI
         out.put("approved", matched);
         out.put("rejected", rejected);
         return out;
     }
 
-    static Set<String> extractReceiptNos(String text) {
+    static String extractPdfText(byte[] bytes) throws Exception {
+        try (PDDocument doc = Loader.loadPDF(bytes)) {
+            PDFTextStripper stripper = new PDFTextStripper();
+            stripper.setSortByPosition(true);
+            return stripper.getText(doc);
+        }
+    }
+
+    /**
+     * Parse only Transaction ID values from SiteOmat-style PDF text.
+     * Does not collect arbitrary 9-digit numbers from the whole file.
+     */
+    static Set<String> extractTransactionIds(String text) {
         Set<String> out = new LinkedHashSet<>();
-        Matcher m = Pattern.compile("(?<!\\d)(\\d{9})(?!\\d)").matcher(text);
-        while (m.find()) out.add(m.group(1));
+        if (text == null || text.isBlank()) return out;
+
+        String[] lines = text.split("\\R");
+        int txnCol = -1;
+        int headerIdx = -1;
+        for (int i = 0; i < lines.length; i++) {
+            String[] cols = splitRow(lines[i]);
+            for (int c = 0; c < cols.length; c++) {
+                if (cols[c].equalsIgnoreCase("TransactionId")
+                        || cols[c].equalsIgnoreCase("TxnId")
+                        || cols[c].equalsIgnoreCase("TrnsId")) {
+                    txnCol = c;
+                    headerIdx = i;
+                    break;
+                }
+            }
+            if (txnCol >= 0) break;
+        }
+
+        if (txnCol >= 0) {
+            for (int i = headerIdx + 1; i < lines.length; i++) {
+                String raw = lines[i].trim();
+                if (raw.isEmpty()) continue;
+                String[] cols = splitRow(raw);
+                // New header / section — stop table scan
+                if (looksLikeHeaderRow(cols)) break;
+                if (cols.length <= txnCol) continue;
+                String key = last9(cols[txnCol]);
+                if (key != null) out.add(key);
+            }
+        }
+
+        // Labeled values: "Transaction ID: 123456789"
+        Matcher m = LABELED_TXN.matcher(text);
+        while (m.find()) {
+            String key = last9(m.group(1));
+            if (key != null) out.add(key);
+        }
+
         return out;
     }
 
+    static List<String> billMatchKeys(BillClaim c) {
+        LinkedHashSet<String> keys = new LinkedHashSet<>();
+        if (c.getReceiptKey() != null && !c.getReceiptKey().isBlank()) keys.add(c.getReceiptKey());
+        String fcc = last9(c.getFccId());
+        String trans = last9(c.getTransId());
+        if (fcc != null) keys.add(fcc);
+        if (trans != null) keys.add(trans);
+        return new ArrayList<>(keys);
+    }
+
+    private static boolean looksLikeHeaderRow(String[] cols) {
+        for (String c : cols) {
+            if (c.equalsIgnoreCase("TransactionId")
+                    || c.equalsIgnoreCase("ReceiptNo")
+                    || c.equalsIgnoreCase("FccId")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Normalize multi-word headers so "Transaction ID" becomes one token. */
+    static String[] splitRow(String line) {
+        String n = line
+                .replaceAll("(?i)transaction\\s*id", "TransactionId")
+                .replaceAll("(?i)trns\\.?\\s*id", "TrnsId")
+                .replaceAll("(?i)txn\\s*id", "TxnId")
+                .replaceAll("(?i)receipt\\s*no\\.?", "ReceiptNo")
+                .replaceAll("(?i)fcc\\s*id", "FccId");
+        return n.trim().split("\\s+");
+    }
+
     static String last9(String raw) {
-        String d = raw == null ? "" : raw.replaceAll("\\D", "");
-        if (d.length() > 9) d = d.substring(d.length() - 9);
-        if (d.length() < 9) d = String.format("%9s", d).replace(' ', '0');
-        return d;
+        return BillOcrResult.normalizeReceiptDigits(raw);
     }
 }
