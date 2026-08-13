@@ -3,6 +3,7 @@ package com.petrolpump.discount.service;
 import com.petrolpump.discount.domain.*;
 import com.petrolpump.discount.repo.*;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,10 +16,10 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Locale;
 
 @Service
 public class ClaimService {
+    private final AuthService auth;
     private final AppUserRepository users;
     private final VehicleLinkRepository vehicles;
     private final PumpRepository pumps;
@@ -28,10 +29,11 @@ public class ClaimService {
     private final GeminiBillOcrService ocr;
     private final Path uploadDir;
 
-    public ClaimService(AppUserRepository users, VehicleLinkRepository vehicles, PumpRepository pumps,
+    public ClaimService(AuthService auth, AppUserRepository users, VehicleLinkRepository vehicles, PumpRepository pumps,
                         BillClaimRepository claims, PhoneBlacklistRepository blacklist,
                         AdminAlertRepository alerts, GeminiBillOcrService ocr,
                         @Value("${app.upload-dir:./uploads}") String uploadDir) throws Exception {
+        this.auth = auth;
         this.users = users;
         this.vehicles = vehicles;
         this.pumps = pumps;
@@ -44,17 +46,26 @@ public class ClaimService {
     }
 
     @Transactional
-    public BillClaim guestUpload(String phone, String vehicleNo, MultipartFile image,
-                                 Double lat, Double lng) throws Exception {
+    public BillClaim upload(String sessionToken, String phone, String vehicleNo, MultipartFile image,
+                            Double lat, Double lng) throws Exception {
         if (image == null || image.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Bill photo required");
         }
-        phone = AuthService.normalizePhone(phone);
+
+        AppUser user;
+        if (sessionToken != null && !sessionToken.isBlank()) {
+            user = auth.requireUser(sessionToken);
+            phone = user.getPhone();
+        } else {
+            phone = AuthService.normalizePhone(phone);
+            user = users.findByPhone(phone)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Please register first"));
+        }
+
         if (blacklist.existsByPhone(phone)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Phone not eligible to claim");
         }
-        AppUser user = users.findByPhone(phone)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Please register first"));
+
         String normVeh = VehicleNormalizer.normalize(vehicleNo);
         if (!vehicles.existsByUserAndRegNo(user, normVeh)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vehicle not linked to this account");
@@ -72,18 +83,23 @@ public class ClaimService {
         }
 
         BillOcrResult extracted = ocr.extract(image);
-        String billNo = extracted.getBillNo();
+        String billNo = BillOcrResult.normalizeBillNo(extracted.getBillNo());
         if (extracted.isDuplicate()
-                || (billNo != null && billNo.toUpperCase(Locale.ROOT).endsWith("-DUPLT"))) {
+                || (billNo != null && billNo.endsWith("-DUPLT"))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Duplicate bill uploaded");
         }
 
-        String key = extracted.receiptKey();
-        if (key == null || key.isBlank()) {
+        var candidateKeys = extracted.candidateReceiptKeys();
+        if (candidateKeys.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Could not read FCC ID / Trans ID from bill");
         }
-        if (claims.existsByReceiptKey(key)) {
+        for (String k : candidateKeys) {
+            if (claims.existsByReceiptKey(k)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Bill already submitted");
+            }
+        }
+        if (billNo != null && claims.existsByBillNoIgnoreCase(billNo)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Bill already submitted");
         }
 
@@ -102,6 +118,7 @@ public class ClaimService {
                     "Vehicle on bill does not match entered vehicle");
         }
 
+        String key = candidateKeys.get(0);
         String filename = key + "_" + System.currentTimeMillis() + ".jpg";
         Path dest = uploadDir.resolve(filename);
         Files.copy(image.getInputStream(), dest, StandardCopyOption.REPLACE_EXISTING);
@@ -120,7 +137,13 @@ public class ClaimService {
         claim.setDistanceMeters(dist);
         claim.setBillTime(Instant.now());
         claim.setStatus(ClaimStatus.QUEUED);
-        BillClaim saved = claims.save(claim);
+
+        BillClaim saved;
+        try {
+            saved = claims.saveAndFlush(claim);
+        } catch (DataIntegrityViolationException ex) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Bill already submitted");
+        }
 
         Instant since = Instant.now().minus(24, ChronoUnit.HOURS);
         long recent = claims.countByUserAndCreatedAtAfter(user, since);

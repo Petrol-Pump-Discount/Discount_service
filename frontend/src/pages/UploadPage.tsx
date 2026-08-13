@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { api } from '../api/client'
+import { api, getToken } from '../api/client'
 import { TextInput } from '../components/Field'
 import { Shell } from '../components/Shell'
 import {
@@ -17,6 +17,8 @@ type UploadRes = {
   message: string
 }
 
+type Me = { phone: string; role: string }
+
 function isSecure(): boolean {
   return typeof window !== 'undefined' && window.isSecureContext
 }
@@ -28,6 +30,7 @@ export function UploadPage({ role }: { role?: string }) {
   const [blob, setBlob] = useState<Blob | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const [phone, setPhone] = useState('')
+  const [signedInPhone, setSignedInPhone] = useState<string | null>(null)
   const [vehicleNo, setVehicleNo] = useState('')
   const [lat, setLat] = useState<number | null>(null)
   const [lng, setLng] = useState<number | null>(null)
@@ -35,14 +38,29 @@ export function UploadPage({ role }: { role?: string }) {
   const [err, setErr] = useState('')
   const [result, setResult] = useState<UploadRes | null>(null)
   const [busy, setBusy] = useState(false)
+  const [submitLocked, setSubmitLocked] = useState(false)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const secure = isSecure()
+  const guest = !signedInPhone
 
-  const phoneErr = useMemo(() => (touched.phone ? validatePhone(phone) : null), [phone, touched.phone])
+  const phoneErr = useMemo(
+    () => (guest && touched.phone ? validatePhone(phone) : null),
+    [guest, phone, touched.phone],
+  )
   const vehicleErr = useMemo(
     () => (touched.vehicle ? validateVehicle(vehicleNo) : null),
     [vehicleNo, touched.vehicle],
   )
+
+  useEffect(() => {
+    if (!getToken()) {
+      setSignedInPhone(null)
+      return
+    }
+    void api<Me>('/api/auth/me')
+      .then((m) => setSignedInPhone(m.phone))
+      .catch(() => setSignedInPhone(null))
+  }, [])
 
   function requestLocation() {
     if (!navigator.geolocation) {
@@ -73,11 +91,16 @@ export function UploadPage({ role }: { role?: string }) {
     requestLocation()
   }, [])
 
-  async function startLiveCamera() {
-    setErr('')
-    setResult(null)
+  function clearPhoto() {
     setBlob(null)
     setPreview(null)
+    setSubmitLocked(false)
+    setResult(null)
+  }
+
+  async function startLiveCamera() {
+    setErr('')
+    clearPhoto()
     if (!secure) {
       setErr('Camera in-browser needs HTTPS. Use “Take bill photo” below, or open via your Cloudflare domain.')
       fileRef.current?.click()
@@ -125,6 +148,8 @@ export function UploadPage({ role }: { role?: string }) {
     canvas.toBlob(
       (b) => {
         if (!b) return
+        setSubmitLocked(false)
+        setResult(null)
         setBlob(b)
         setPreview(URL.createObjectURL(b))
         stream?.getTracks().forEach((t) => t.stop())
@@ -142,6 +167,7 @@ export function UploadPage({ role }: { role?: string }) {
       return
     }
     setErr('')
+    setSubmitLocked(false)
     setResult(null)
     setBlob(file)
     setPreview(URL.createObjectURL(file))
@@ -151,11 +177,18 @@ export function UploadPage({ role }: { role?: string }) {
 
   async function submit(e: FormEvent) {
     e.preventDefault()
+    if (submitLocked || busy) return
     setTouched({ phone: true, vehicle: true })
-    const pErr = validatePhone(phone)
+    if (guest) {
+      const pErr = validatePhone(phone)
+      if (pErr) {
+        setErr(pErr)
+        return
+      }
+    }
     const vErr = validateVehicle(vehicleNo)
-    if (pErr || vErr) {
-      setErr(pErr || vErr || '')
+    if (vErr) {
+      setErr(vErr)
       return
     }
     if (!blob) {
@@ -168,11 +201,10 @@ export function UploadPage({ role }: { role?: string }) {
       return
     }
     setErr('')
-    setResult(null)
     setBusy(true)
     try {
       const fd = new FormData()
-      fd.append('phone', normalizePhone(phone))
+      if (guest) fd.append('phone', normalizePhone(phone))
       fd.append('vehicleNo', normalizeVehicle(vehicleNo))
       fd.append('lat', String(lat))
       fd.append('lng', String(lng))
@@ -180,9 +212,10 @@ export function UploadPage({ role }: { role?: string }) {
       const res = await api<UploadRes>('/api/claims/upload', {
         method: 'POST',
         body: fd,
-        auth: false,
+        auth: !guest,
       })
       setResult(res)
+      setSubmitLocked(true)
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'Upload failed')
     } finally {
@@ -190,8 +223,9 @@ export function UploadPage({ role }: { role?: string }) {
     }
   }
 
+  const phoneOk = !guest || !validatePhone(phone)
   const canSubmit =
-    !validatePhone(phone) && !validateVehicle(vehicleNo) && !!blob && lat != null && lng != null && !busy
+    phoneOk && !validateVehicle(vehicleNo) && !!blob && lat != null && lng != null && !busy && !submitLocked
 
   return (
     <Shell role={role} title="Upload bill">
@@ -203,16 +237,22 @@ export function UploadPage({ role }: { role?: string }) {
           </p>
         )}
         <form className="stack" onSubmit={submit} noValidate>
-          <TextInput
-            label="Registered mobile"
-            inputMode="numeric"
-            maxLength={10}
-            value={phone}
-            error={phoneErr}
-            placeholder="9876543210"
-            onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
-            onChange={(e) => setPhone(normalizePhone(e.target.value))}
-          />
+          {guest ? (
+            <TextInput
+              label="Registered mobile"
+              inputMode="numeric"
+              maxLength={10}
+              value={phone}
+              error={phoneErr}
+              placeholder="9876543210"
+              onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
+              onChange={(e) => setPhone(normalizePhone(e.target.value))}
+            />
+          ) : (
+            <p className="muted" style={{ margin: 0 }}>
+              Signed in as <strong>{signedInPhone}</strong>
+            </p>
+          )}
           <TextInput
             label="Vehicle number"
             autoCapitalize="characters"
@@ -265,8 +305,7 @@ export function UploadPage({ role }: { role?: string }) {
                     type="button"
                     className="btn btn-danger"
                     onClick={() => {
-                      setPreview(null)
-                      setBlob(null)
+                      clearPhoto()
                       fileRef.current?.click()
                     }}
                   >
@@ -291,7 +330,7 @@ export function UploadPage({ role }: { role?: string }) {
           </div>
 
           <button className="btn btn-primary" type="submit" disabled={!canSubmit}>
-            {busy ? 'Submitting…' : 'Submit'}
+            {busy ? 'Submitting…' : submitLocked ? 'Submitted' : 'Submit'}
           </button>
         </form>
         {result && (
@@ -300,6 +339,7 @@ export function UploadPage({ role }: { role?: string }) {
             <p className="muted">
               <span className="badge warn">{result.status}</span> · {result.receiptKey} · {result.volumeLitres} L
             </p>
+            <p className="muted">Take a new bill photo to submit again.</p>
           </div>
         )}
         {err && <p className="err">{err}</p>}

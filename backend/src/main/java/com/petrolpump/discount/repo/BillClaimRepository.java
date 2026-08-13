@@ -8,6 +8,7 @@ import java.util.Optional;
 public interface BillClaimRepository extends JpaRepository<BillClaim, Long> {
     Optional<BillClaim> findByReceiptKey(String receiptKey);
     boolean existsByReceiptKey(String receiptKey);
+    boolean existsByBillNoIgnoreCase(String billNo);
     List<BillClaim> findByStatusOrderByCreatedAtAsc(ClaimStatus status);
     List<BillClaim> findByUserAndCreatedAtAfter(AppUser user, Instant after);
     @Query("select coalesce(sum(c.volumeLitres),0) from BillClaim c where c.user = ?1 and c.status = com.petrolpump.discount.domain.ClaimStatus.APPROVED and c.decidedAt >= ?2")

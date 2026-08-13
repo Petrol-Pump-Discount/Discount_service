@@ -30,18 +30,34 @@ public class BillOcrResult {
     public String getRawText() { return rawText; }
     public void setRawText(String rawText) { this.rawText = rawText; }
 
+    /** Primary key for storage: prefer FCC ID, else Trans ID. */
     public String receiptKey() {
-        String src = (fccId != null && !fccId.isBlank()) ? fccId : transId;
-        if (src == null || src.isBlank()) {
-            return null;
+        java.util.List<String> keys = candidateReceiptKeys();
+        return keys.isEmpty() ? null : keys.get(0);
+    }
+
+    /** All normalized ID keys from the bill — used to catch OCR picking FCC vs Trans on re-upload. */
+    public java.util.List<String> candidateReceiptKeys() {
+        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+        for (String src : new String[]{fccId, transId}) {
+            String k = normalizeReceiptDigits(src);
+            if (k != null) out.add(k);
         }
+        return new java.util.ArrayList<>(out);
+    }
+
+    public static String normalizeBillNo(String billNo) {
+        if (billNo == null) return null;
+        String n = billNo.trim().replaceAll("\\s+", "").toUpperCase(java.util.Locale.ROOT);
+        return n.isEmpty() ? null : n;
+    }
+
+    private static String normalizeReceiptDigits(String src) {
+        if (src == null || src.isBlank()) return null;
         String d = src.replaceAll("\\D", "");
-        if (d.length() > 9) {
-            d = d.substring(d.length() - 9);
-        }
-        if (d.length() < 9) {
-            d = String.format("%9s", d).replace(' ', '0');
-        }
+        if (d.isEmpty()) return null;
+        if (d.length() > 9) d = d.substring(d.length() - 9);
+        if (d.length() < 9) d = String.format("%9s", d).replace(' ', '0');
         return d;
     }
 }
