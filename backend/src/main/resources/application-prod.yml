@@ -40,6 +40,8 @@ app:
     lat: ${PUMP_LAT:13.765987}
     lng: ${PUMP_LNG:76.852652}
     radius-meters: ${PUMP_RADIUS_METERS:50}
+  admin-phones: ${ADMIN_PHONES:}
+  employee-phones: ${EMPLOYEE_PHONES:}
   gemini:
     api-key: ${GEMINI_API_KEY}
     model: ${GEMINI_MODEL:gemini-flash-latest}
