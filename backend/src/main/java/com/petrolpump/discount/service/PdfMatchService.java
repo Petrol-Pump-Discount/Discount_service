@@ -20,6 +20,21 @@ import java.util.stream.Collectors;
 @Service
 public class PdfMatchService {
     private static final Logger log = LoggerFactory.getLogger(PdfMatchService.class);
+
+    /**
+     * SiteOmat rows often put Transaction ID right after PreAuth / Preset type,
+     * e.g. {@code PreAuth     300000261  2282.20} or {@code PreAuth   Money 300000158}.
+     */
+    private static final Pattern TXN_AFTER_PREAUTH = Pattern.compile(
+            "(?i)PreAuth\\s+(?:\\S+\\s+)?(\\d{9})(?!\\d)");
+
+    /**
+     * Multi-line SiteOmat rows put Transaction ID on the product continuation line:
+     * {@code Diesel (Rs.)  1000.00  300000158  1000.00}
+     */
+    private static final Pattern TXN_ON_CONTINUATION = Pattern.compile(
+            "(?i)(?:Rs\\.|Ltr)\\)?\\s+[\\d.]+\\s+(\\d{9})(?!\\d)\\s+[\\d.]+");
+
     private static final Pattern LABELED_TXN = Pattern.compile(
             "(?i)(?:transaction\\s*id|trns\\.?\\s*id|txn\\s*id)\\s*[:#\\-]?\\s*(\\d{6,})");
 
@@ -44,7 +59,7 @@ public class PdfMatchService {
                 pdf.getOriginalFilename(),
                 pdf.getSize(),
                 txnIds.size(),
-                txnIds.stream().limit(30).collect(Collectors.joining(",")));
+                txnIds.stream().limit(40).collect(Collectors.joining(",")));
 
         if (extraRejectIds != null) {
             for (String r : extraRejectIds) {
@@ -107,7 +122,7 @@ public class PdfMatchService {
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("transactionIdsParsed", txnIds.size());
-        out.put("receiptsParsed", txnIds.size()); // backward-compatible for admin UI
+        out.put("receiptsParsed", txnIds.size());
         out.put("approved", matched);
         out.put("rejected", rejected);
         return out;
@@ -122,13 +137,35 @@ public class PdfMatchService {
     }
 
     /**
-     * Parse only Transaction ID values from SiteOmat-style PDF text.
-     * Does not collect arbitrary 9-digit numbers from the whole file.
+     * Parse Transaction ID values from SiteOmat Transaction Report text.
+     * SiteOmat splits the "Transaction ID" header across lines, so we locate IDs by
+     * row position (after PreAuth / on product continuation), not by column index.
      */
     static Set<String> extractTransactionIds(String text) {
         Set<String> out = new LinkedHashSet<>();
         if (text == null || text.isBlank()) return out;
 
+        addAll(out, TXN_AFTER_PREAUTH, text);
+        addAll(out, TXN_ON_CONTINUATION, text);
+        addAll(out, LABELED_TXN, text);
+
+        // Fallback: header still on one line (non-SiteOmat exports)
+        if (out.isEmpty()) {
+            out.addAll(extractByTransactionIdColumn(text));
+        }
+        return out;
+    }
+
+    private static void addAll(Set<String> out, Pattern pattern, String text) {
+        Matcher m = pattern.matcher(text);
+        while (m.find()) {
+            String key = last9(m.group(1));
+            if (key != null) out.add(key);
+        }
+    }
+
+    static Set<String> extractByTransactionIdColumn(String text) {
+        Set<String> out = new LinkedHashSet<>();
         String[] lines = text.split("\\R");
         int txnCol = -1;
         int headerIdx = -1;
@@ -145,27 +182,16 @@ public class PdfMatchService {
             }
             if (txnCol >= 0) break;
         }
-
-        if (txnCol >= 0) {
-            for (int i = headerIdx + 1; i < lines.length; i++) {
-                String raw = lines[i].trim();
-                if (raw.isEmpty()) continue;
-                String[] cols = splitRow(raw);
-                // New header / section — stop table scan
-                if (looksLikeHeaderRow(cols)) break;
-                if (cols.length <= txnCol) continue;
-                String key = last9(cols[txnCol]);
-                if (key != null) out.add(key);
-            }
-        }
-
-        // Labeled values: "Transaction ID: 123456789"
-        Matcher m = LABELED_TXN.matcher(text);
-        while (m.find()) {
-            String key = last9(m.group(1));
+        if (txnCol < 0) return out;
+        for (int i = headerIdx + 1; i < lines.length; i++) {
+            String raw = lines[i].trim();
+            if (raw.isEmpty()) continue;
+            String[] cols = splitRow(raw);
+            if (looksLikeHeaderRow(cols)) break;
+            if (cols.length <= txnCol) continue;
+            String key = last9(cols[txnCol]);
             if (key != null) out.add(key);
         }
-
         return out;
     }
 
@@ -190,7 +216,6 @@ public class PdfMatchService {
         return false;
     }
 
-    /** Normalize multi-word headers so "Transaction ID" becomes one token. */
     static String[] splitRow(String line) {
         String n = line
                 .replaceAll("(?i)transaction\\s*id", "TransactionId")
