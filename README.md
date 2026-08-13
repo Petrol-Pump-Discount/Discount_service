@@ -1,4 +1,4 @@
-# Discount Service — NAGA SHREE Pump Loyalty
+# Discount Service — Nagashree Pump Loyalty
 
 Drivers earn coins from fuel bills (Gemini OCR → daily SiteOmat PDF match) and redeem at the pump QR.
 

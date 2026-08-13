@@ -25,7 +25,7 @@ public class TwilioSmsOtpSender implements OtpSender {
             @Value("${app.twilio.account-sid}") String accountSid,
             @Value("${app.twilio.auth-token}") String authToken,
             @Value("${app.twilio.from-number}") String fromNumber,
-            @Value("${app.otp.sms-template:Your OTP for Nagashree Service station Login is: {otp}}") String bodyTemplate) {
+            @Value("${app.otp.sms-template:Your OTP for Nagashree Service Station Login is: {otp}}") String bodyTemplate) {
         if (accountSid == null || accountSid.isBlank() || authToken == null || authToken.isBlank()) {
             throw new IllegalStateException("TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are required");
         }
@@ -35,7 +35,7 @@ public class TwilioSmsOtpSender implements OtpSender {
         Twilio.init(accountSid, authToken);
         this.fromNumber = fromNumber.trim();
         this.bodyTemplate = bodyTemplate == null || bodyTemplate.isBlank()
-                ? "Your OTP for Nagashree Service station Login is: {otp}"
+                ? "Your OTP for Nagashree Service Station Login is: {otp}"
                 : bodyTemplate;
         log.info("OTP provider: Twilio SMS from {}", this.fromNumber);
     }

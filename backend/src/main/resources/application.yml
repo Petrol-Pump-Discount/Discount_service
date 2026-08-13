@@ -29,7 +29,7 @@ app:
     provider: ${OTP_PROVIDER:console}
     ttl-seconds: ${OTP_TTL_SECONDS:300}
     max-attempts: ${OTP_MAX_ATTEMPTS:5}
-    sms-template: "${OTP_SMS_TEMPLATE:Your OTP for Nagashree Service station Login is: {otp}}"
+    sms-template: "${OTP_SMS_TEMPLATE:Your OTP for Nagashree Service Station Login is: {otp}}"
   twilio:
     account-sid: ${TWILIO_ACCOUNT_SID:}
     auth-token: ${TWILIO_AUTH_TOKEN:}

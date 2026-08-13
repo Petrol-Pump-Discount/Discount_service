@@ -1,11 +1,11 @@
 {
-  "name": "NAGA SHREE Loyalty",
-  "short_name": "NAGA SHREE",
+  "name": "Nagashree Loyalty",
+  "short_name": "Nagashree",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#044A89",
   "theme_color": "#044A89",
-  "description": "IndianOil NAGA SHREE pump loyalty — earn coins, redeem fuel.",
+  "description": "IndianOil Nagashree pump loyalty — earn coins, redeem fuel.",
   "icons": [
     {
       "src": "/icon.svg",

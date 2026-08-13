@@ -20,7 +20,7 @@ public class SeedData {
             }
             if (pumps.count() == 0) {
                 Pump p = new Pump();
-                p.setName("NAGA SHREE SERVICE STATION");
+                p.setName("Nagashree Service Station");
                 p.setLat(pumpLat);
                 p.setLng(pumpLng);
                 p.setRadiusMeters(radiusMeters);
