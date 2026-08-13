@@ -18,13 +18,14 @@ public class ClaimController {
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Map<String, Object> upload(
-            @RequestParam String phone,
+            @RequestHeader(value = "X-Session-Token", required = false) String sessionToken,
+            @RequestParam(required = false) String phone,
             @RequestParam String vehicleNo,
             @RequestParam MultipartFile image,
             @RequestParam double lat,
             @RequestParam double lng
     ) throws Exception {
-        var c = claims.guestUpload(phone, vehicleNo, image, lat, lng);
+        var c = claims.upload(sessionToken, phone, vehicleNo, image, lat, lng);
         return Map.of(
                 "id", c.getId(),
                 "status", c.getStatus().name(),
