@@ -1,9 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Nagashree IndianOil">
-  <rect width="64" height="64" rx="14" fill="#044A89"/>
-  <!-- flame -->
-  <path fill="#FF671F" d="M32 10c6 8 14 12 14 24a14 14 0 1 1-28 0c0-7 4-12 8-16 1 5 4 8 6 9 0-6 0-12 0-17z"/>
-  <path fill="#FFC24B" d="M32 28c3 3 7 5 7 11a7 7 0 1 1-14 0c0-3 1.5-5.5 3.5-7.5.5 2 2 3.5 3.5 4 0-3 0-5.5 0-7.5z"/>
-  <!-- pump base -->
-  <rect x="22" y="46" width="20" height="10" rx="2" fill="#F5F7FA"/>
-  <rect x="28" y="48" width="8" height="6" rx="1" fill="#044A89"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img">
+  <circle cx="32" cy="28" r="24" fill="#FF671F"/>
+  <circle cx="32" cy="28" r="24" fill="none" stroke="#003087" stroke-width="5"/>
+  <rect x="8" y="22" width="48" height="12" fill="#003087"/>
+  <text x="32" y="31" text-anchor="middle" fill="#fff" font-size="7" font-family="Arial,sans-serif" font-weight="700">IOCL</text>
+  <text x="32" y="56" text-anchor="middle" fill="#003087" font-size="8" font-family="Arial,sans-serif" font-weight="800">IO</text>
 </svg>

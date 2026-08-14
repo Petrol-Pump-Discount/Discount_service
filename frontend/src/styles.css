@@ -1,17 +1,17 @@
 :root {
-  --bg0: #021a33;
-  --bg1: #044A89;
-  --bg2: #0660b0;
+  --bg0: #1a0a00;
+  --bg1: #003087;
+  --bg2: #0a4a9e;
   --accent: #FF671F;
   --accent-deep: #e05510;
-  --cream: #F5F7FA;
-  --ink: #0b1f33;
-  --muted: #5a6b7d;
-  --card: rgba(245, 247, 250, 0.96);
+  --cream: #FFF8F0;
+  --ink: #1a1208;
+  --muted: #6b5c4d;
+  --card: rgba(255, 248, 240, 0.96);
   --danger: #b91c1c;
   --ok: #15803d;
   --radius: 18px;
-  --shadow: 0 18px 40px rgba(2, 26, 51, 0.35);
+  --shadow: 0 18px 40px rgba(26, 10, 0, 0.45);
   font-family: "DM Sans", system-ui, sans-serif;
   color: var(--ink);
   background: var(--bg0);
@@ -24,11 +24,25 @@
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; margin: 0; }
 body {
-  background:
-    radial-gradient(1100px 560px at 8% -8%, rgba(255, 103, 31, 0.28), transparent 55%),
-    radial-gradient(900px 500px at 100% 0%, rgba(4, 74, 137, 0.65), transparent 50%),
-    linear-gradient(165deg, #021a33 0%, #044A89 48%, #032f58 100%);
+  background-color: #1a0a00;
+  background-image:
+    linear-gradient(
+      165deg,
+      rgba(26, 10, 0, 0.78) 0%,
+      rgba(0, 48, 135, 0.55) 42%,
+      rgba(26, 10, 0, 0.88) 100%
+    ),
+    url('/bg-pump.jpg');
+  background-size: cover;
+  background-position: center;
   background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+@media (max-width: 768px) {
+  body {
+    background-attachment: scroll;
+  }
 }
 
 a { color: inherit; text-decoration: none; }
@@ -94,7 +108,7 @@ button, input, select, textarea {
   position: fixed;
   inset: 0;
   z-index: 80;
-  background: rgba(2, 26, 51, 0.55);
+  background: rgba(26, 10, 0, 0.62);
   display: grid;
   place-items: center;
   padding: 1rem;
@@ -140,7 +154,7 @@ button, input, select, textarea {
   transform: scale(0.99);
 }
 .fold.open > .fold-head {
-  background: #e8f0f8;
+  background: #fff0e6;
   color: var(--bg1);
 }
 .fold-chevron {
@@ -165,9 +179,13 @@ button, input, select, textarea {
 
 .brand-mark {
   flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
   border-radius: 12px;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
-  background: #044A89;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+  background: #fff;
+  padding: 3px;
 }
 
 .brand {
@@ -359,7 +377,7 @@ select[aria-invalid="true"] {
   width: 2.4rem;
   height: 2.4rem;
   border-width: 3.5px;
-  border-color: rgba(4, 74, 137, 0.2);
+  border-color: rgba(255, 103, 31, 0.22);
   border-top-color: var(--accent);
 }
 @keyframes spin {
@@ -448,7 +466,7 @@ select[aria-invalid="true"] {
   gap: 1rem;
   padding: 1rem 1.1rem;
   border-radius: 16px;
-  background: linear-gradient(135deg, #0660b0, #044A89 55%, #032f58);
+  background: linear-gradient(135deg, #FF671F, #e05510 40%, #003087 100%);
   color: var(--cream);
   margin-top: 1rem;
 }
@@ -477,7 +495,7 @@ select[aria-invalid="true"] {
   padding: 0.15rem 0.55rem;
   font-size: 0.75rem;
   font-weight: 700;
-  background: #eef6f1;
+  background: #fff0e6;
   color: var(--bg1);
 }
 .badge.warn { background: #fff4d6; color: #92400e; }
