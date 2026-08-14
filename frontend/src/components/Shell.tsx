@@ -63,7 +63,7 @@ export function Shell({
   return (
     <div className={`app-shell${wide ? ' wide-shell' : ''}`}>
       <header className="brand-bar">
-        <img className="brand-mark" src="/icon.svg" width={44} height={44} alt="Nagashree" />
+        <img className="brand-mark" src="/indianoil-logo.jpg" width={52} height={52} alt="IndianOil" />
         <div>
           <p className="eyebrow">IndianOil · Nagashree</p>
           <h1 className="brand">{title || 'Pump Loyalty'}</h1>
