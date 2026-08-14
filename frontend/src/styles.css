@@ -111,6 +111,51 @@ button, input, select, textarea {
   margin-top: 0;
 }
 
+.fold {
+  border: 1.5px solid #e0d8c8;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fffdf8;
+  margin-top: 0.65rem;
+}
+.fold-head {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 0;
+  background: #f3efe6;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.fold-head:active,
+.fold-head.is-pressed {
+  filter: brightness(0.92);
+  transform: scale(0.99);
+}
+.fold.open > .fold-head {
+  background: #e8f0f8;
+  color: var(--bg1);
+}
+.fold-chevron {
+  font-size: 1rem;
+  opacity: 0.7;
+}
+.fold-body {
+  padding: 0.85rem 1rem 1rem;
+  display: grid;
+  gap: 0.65rem;
+}
+.fold .fold {
+  margin-top: 0.35rem;
+}
+
 .brand-bar {
   display: flex;
   align-items: center;
@@ -244,16 +289,26 @@ select[aria-invalid="true"] {
 }
 .btn:hover:not(:disabled):not(.btn-busy) {
   transform: translateY(-1px);
-  filter: brightness(1.05);
+  filter: brightness(1.06);
 }
-.btn:active:not(:disabled) {
-  transform: translateY(2px) scale(0.96);
-  filter: brightness(0.9);
-  box-shadow: none !important;
+.btn:active:not(:disabled),
+.btn.is-pressed:not(:disabled) {
+  transform: scale(0.9) !important;
+  filter: brightness(0.72) !important;
+  box-shadow: inset 0 6px 14px rgba(0, 0, 0, 0.45) !important;
+}
+.btn:active:not(:disabled)::after,
+.btn.is-pressed:not(:disabled)::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: inherit;
+  border: 3px solid var(--accent);
+  pointer-events: none;
 }
 .btn:focus-visible {
-  outline: 3px solid rgba(255, 103, 31, 0.55);
-  outline-offset: 2px;
+  outline: 3px solid rgba(255, 103, 31, 0.65);
+  outline-offset: 3px;
 }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 .btn.btn-busy {
@@ -371,9 +426,11 @@ select[aria-invalid="true"] {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
-.nav a:active, .nav button:active {
-  transform: scale(0.94);
-  filter: brightness(1.15);
+.nav a:active, .nav button:active,
+.nav a.is-pressed, .nav button.is-pressed {
+  transform: scale(0.88);
+  filter: brightness(1.35);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 .nav a.active {
   background: var(--accent);

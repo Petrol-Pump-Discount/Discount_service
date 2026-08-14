@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, getToken } from '../api/client'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { TextInput, TextSelect } from '../components/Field'
 import { Shell } from '../components/Shell'
 import { normalizeVehicle, validateVehicle } from '../lib/validate'
@@ -26,6 +27,7 @@ export function AccountPage({ onRole }: { onRole?: (r: string) => void }) {
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
   const [touched, setTouched] = useState(false)
+  const [removeId, setRemoveId] = useState<number | null>(null)
 
   const vehicleErr = useMemo(() => (touched ? validateVehicle(regNo) : null), [regNo, touched])
   const totalRedeemed = useMemo(
@@ -89,11 +91,15 @@ export function AccountPage({ onRole }: { onRole?: (r: string) => void }) {
     setErr('')
     try {
       await api(`/api/vehicles/${id}`, { method: 'DELETE' })
+      setRemoveId(null)
       await load()
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'Failed')
+      setRemoveId(null)
     }
   }
+
+  const removeTarget = vehicles.find((v) => v.id === removeId)
 
   if (!me) {
     return (
@@ -105,6 +111,15 @@ export function AccountPage({ onRole }: { onRole?: (r: string) => void }) {
 
   return (
     <Shell wide role={me.role} title="Wallet">
+      <ConfirmDialog
+        open={removeId != null}
+        title="Remove vehicle?"
+        message={`Are you sure you want to remove ${removeTarget?.regNo || 'this vehicle'}?`}
+        confirmLabel="Yes, remove"
+        danger
+        onCancel={() => setRemoveId(null)}
+        onConfirm={() => removeId != null && void remove(removeId)}
+      />
       <div className="dash-grid">
         <div className="wallet" style={{ marginTop: 0 }}>
           <div>
@@ -127,7 +142,7 @@ export function AccountPage({ onRole }: { onRole?: (r: string) => void }) {
                 <span>
                   <strong>{v.regNo}</strong> {v.fuelType && <span className="badge">{v.fuelType}</span>}
                 </span>
-                <button type="button" className="btn btn-danger" onClick={() => void remove(v.id)}>
+                <button type="button" className="btn btn-danger" onClick={() => setRemoveId(v.id)}>
                   Remove
                 </button>
               </li>
