@@ -1,6 +1,7 @@
 import { type FormEvent, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, setToken } from '../api/client'
+import { Spinner } from '../components/Busy'
 import { TextInput } from '../components/Field'
 import { Shell } from '../components/Shell'
 import {
@@ -123,11 +124,11 @@ export function AuthPage() {
               onChange={(e) => setName(normalizeName(e.target.value))}
             />
             <button
-              className="btn btn-primary"
+              className={`btn btn-primary${busy ? ' btn-busy' : ''}`}
               disabled={busy || !!validatePhone(phone) || !!validateName(name)}
               type="submit"
             >
-              Send OTP
+              {busy ? <Spinner label="Sending…" /> : 'Send OTP'}
             </button>
           </form>
         ) : (
@@ -145,8 +146,12 @@ export function AuthPage() {
               onBlur={() => setTouched((t) => ({ ...t, otp: true }))}
               onChange={(e) => setOtp(normalizeOtp(e.target.value))}
             />
-            <button className="btn btn-primary" disabled={busy || !!validateOtp(otp)} type="submit">
-              Continue
+            <button
+              className={`btn btn-primary${busy ? ' btn-busy' : ''}`}
+              disabled={busy || !!validateOtp(otp)}
+              type="submit"
+            >
+              {busy ? <Spinner label="Verifying…" /> : 'Continue'}
             </button>
             <button
               className="btn btn-danger"
