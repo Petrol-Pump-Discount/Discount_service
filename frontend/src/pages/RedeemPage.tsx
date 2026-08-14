@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, getToken } from '../api/client'
+import { Spinner } from '../components/Busy'
 import { TextInput } from '../components/Field'
 import { Shell } from '../components/Shell'
 import { validateCoins, validateRupees } from '../lib/validate'
@@ -157,7 +158,7 @@ export function RedeemPage({ onRole }: { onRole?: (r: string) => void }) {
                 onChange={(e) => onAmountChange(e.target.value)}
               />
               <button
-                className="btn btn-primary"
+                className={`btn btn-primary${busy ? ' btn-busy' : ''}`}
                 disabled={
                   busy ||
                   !amount ||
@@ -167,7 +168,7 @@ export function RedeemPage({ onRole }: { onRole?: (r: string) => void }) {
                 }
                 type="submit"
               >
-                {busy ? 'Paying…' : 'Pay'}
+                {busy ? <Spinner label="Paying…" /> : 'Pay'}
               </button>
             </form>
           </>

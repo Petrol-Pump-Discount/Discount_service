@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { api, getToken } from '../api/client'
+import { LoadingBlock, Spinner } from '../components/Busy'
 import { TextInput } from '../components/Field'
 import { Shell } from '../components/Shell'
 import {
@@ -235,14 +236,22 @@ export function UploadPage({ role }: { role?: string }) {
 
   return (
     <Shell role={role} title="Upload bill">
-      <div className="card">
+      <div className={`card${busy ? ' is-busy' : ''}`}>
+        {busy && (
+          <div className="loading-veil">
+            <LoadingBlock
+              title="Reading bill…"
+              detail="OCR + geofence check in progress. Please wait."
+            />
+          </div>
+        )}
         {!secure && (
           <p className="err" style={{ marginTop: 0 }}>
             This page is HTTP only. Chrome blocks live camera/GPS on plain IP. Use “Take bill photo”, or put the
             site behind Cloudflare HTTPS for full permissions.
           </p>
         )}
-        <form className="stack" onSubmit={submit} noValidate>
+        <form className="stack" onSubmit={submit} noValidate aria-busy={busy}>
           {guest ? (
             <TextInput
               label="Registered mobile"
@@ -335,8 +344,18 @@ export function UploadPage({ role }: { role?: string }) {
             )}
           </div>
 
-          <button className="btn btn-primary" type="submit" disabled={!canSubmit}>
-            {busy ? 'Submitting…' : submitLocked ? 'Submitted' : 'Submit'}
+          <button
+            className={`btn btn-primary${busy ? ' btn-busy' : ''}`}
+            type="submit"
+            disabled={!canSubmit}
+          >
+            {busy ? (
+              <Spinner label="Submitting…" />
+            ) : submitLocked ? (
+              'Submitted'
+            ) : (
+              'Submit'
+            )}
           </button>
         </form>
         {result && (

@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, getToken } from '../api/client'
+import { LoadingBlock, Spinner } from '../components/Busy'
 import { TextInput } from '../components/Field'
 import { Shell } from '../components/Shell'
 import {
@@ -80,6 +81,7 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
   const [qrUrl, setQrUrl] = useState('')
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
+  const [pdfBusy, setPdfBusy] = useState(false)
   const [statusFilter, setStatusFilter] = useState('QUEUED')
   const [touched, setTouched] = useState<Record<string, boolean>>({})
 
@@ -181,6 +183,7 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
     }
     setErr('')
     setMsg('')
+    setPdfBusy(true)
     const fd = new FormData()
     fd.append('pdf', pdf)
     if (rejectIds.trim()) fd.append('rejectIdsCsv', rejectIds.trim())
@@ -190,6 +193,8 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
       await load()
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'PDF failed')
+    } finally {
+      setPdfBusy(false)
     }
   }
 
@@ -294,14 +299,23 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
           <input readOnly value={qrUrl} onFocus={(e) => e.target.select()} />
         </div>
 
-        <div className="card">
+        <div className={`card${pdfBusy ? ' is-busy' : ''}`}>
+          {pdfBusy && (
+            <div className="loading-veil">
+              <LoadingBlock
+                title="Matching PDF…"
+                detail="Parsing Transaction IDs and crediting coins. Please wait."
+              />
+            </div>
+          )}
           <h3>SiteOmat PDF</h3>
-          <form className="stack" onSubmit={uploadPdf} noValidate>
+          <form className="stack" onSubmit={uploadPdf} noValidate aria-busy={pdfBusy}>
             <label className="field">
               <span className="field-label">PDF</span>
               <input
                 type="file"
                 accept="application/pdf,.pdf"
+                disabled={pdfBusy}
                 onChange={(e) => setPdf(e.target.files?.[0] || null)}
               />
             </label>
@@ -314,8 +328,12 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
               onBlur={() => setTouched((t) => ({ ...t, reject: true }))}
               onChange={(e) => setRejectIds(e.target.value.toUpperCase())}
             />
-            <button className="btn btn-primary" type="submit" disabled={!!validateRejectIdsCsv(rejectIds)}>
-              Match & credit
+            <button
+              className={`btn btn-primary${pdfBusy ? ' btn-busy' : ''}`}
+              type="submit"
+              disabled={pdfBusy || !!validateRejectIdsCsv(rejectIds)}
+            >
+              {pdfBusy ? <Spinner label="Matching…" /> : 'Match & credit'}
             </button>
           </form>
         </div>
