@@ -5,6 +5,7 @@ import com.petrolpump.discount.repo.*;
 import com.petrolpump.discount.service.AuthService;
 import com.petrolpump.discount.service.BusinessDay;
 import com.petrolpump.discount.service.PdfMatchService;
+import com.petrolpump.discount.service.VehicleNormalizer;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -25,14 +26,16 @@ public class AdminController {
     private final AdminAlertRepository alerts;
     private final PumpRepository pumps;
     private final AppUserRepository users;
+    private final VehicleLinkRepository vehicles;
 
     public AdminController(AuthService auth, PdfMatchService pdfMatch, LoyaltyConfigRepository configs,
                            PhoneBlacklistRepository blacklist, RejectIdRepository rejectIds,
                            BillClaimRepository claims, RedeemTransactionRepository redeems,
-                           AdminAlertRepository alerts, PumpRepository pumps, AppUserRepository users) {
+                           AdminAlertRepository alerts, PumpRepository pumps, AppUserRepository users,
+                           VehicleLinkRepository vehicles) {
         this.auth = auth; this.pdfMatch = pdfMatch; this.configs = configs; this.blacklist = blacklist;
         this.rejectIds = rejectIds; this.claims = claims; this.redeems = redeems; this.alerts = alerts;
-        this.pumps = pumps; this.users = users;
+        this.pumps = pumps; this.users = users; this.vehicles = vehicles;
     }
 
     private void admin(String token) { auth.requireRole(token, UserRole.ADMIN); }
@@ -91,6 +94,17 @@ public class AdminController {
         return alerts.findTop50ByOrderByCreatedAtDesc();
     }
 
+    @DeleteMapping("/alerts/{id}")
+    public Map<String, String> clearAlert(@RequestHeader("X-Session-Token") String token, @PathVariable Long id) {
+        admin(token);
+        if (!alerts.existsById(id)) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "Alert not found");
+        }
+        alerts.deleteById(id);
+        return Map.of("status", "cleared");
+    }
+
     @GetMapping("/reports/summary")
     public Map<String, Object> summary(@RequestHeader("X-Session-Token") String token) {
         admin(token);
@@ -119,19 +133,37 @@ public class AdminController {
 
     @GetMapping("/users")
     public List<Map<String, Object>> listUsers(@RequestHeader("X-Session-Token") String token) {
+        return listStaff(token);
+    }
+
+    @GetMapping("/users/staff")
+    public List<Map<String, Object>> listStaff(@RequestHeader("X-Session-Token") String token) {
         admin(token);
-        return users.findAll().stream()
-                .sorted(Comparator.comparing(AppUser::getPhone))
-                .map(u -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("id", u.getId());
-                    m.put("phone", u.getPhone());
-                    m.put("name", u.getName() == null ? "" : u.getName());
-                    m.put("role", u.getRole().name());
-                    m.put("walletCoins", u.getWalletCoins());
-                    return m;
-                })
+        return users.findByRoleInOrderByPhoneAsc(List.of(UserRole.ADMIN, UserRole.EMPLOYEE)).stream()
+                .map(this::userDto)
                 .collect(Collectors.toList());
+    }
+
+    @GetMapping("/users/search")
+    public List<Map<String, Object>> searchUsers(@RequestHeader("X-Session-Token") String token,
+                                                 @RequestParam(required = false) String phone,
+                                                 @RequestParam(required = false) String vehicle) {
+        admin(token);
+        LinkedHashMap<Long, AppUser> found = new LinkedHashMap<>();
+        if (phone != null && !phone.isBlank()) {
+            users.findByPhone(AuthService.normalizePhone(phone)).ifPresent(u -> found.put(u.getId(), u));
+        }
+        if (vehicle != null && !vehicle.isBlank()) {
+            String reg = VehicleNormalizer.normalize(vehicle);
+            for (VehicleLink link : vehicles.findByRegNo(reg)) {
+                found.put(link.getUser().getId(), link.getUser());
+            }
+        }
+        if (found.isEmpty() && (phone == null || phone.isBlank()) && (vehicle == null || vehicle.isBlank())) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Provide phone or vehicle");
+        }
+        return found.values().stream().map(this::userDto).collect(Collectors.toList());
     }
 
     @PutMapping("/users/role")
@@ -155,8 +187,8 @@ public class AdminController {
         });
 
         if (actor.getPhone().equals(phone) && role != UserRole.ADMIN) {
-            long otherAdmins = users.findAll().stream()
-                    .filter(u -> u.getRole() == UserRole.ADMIN && !u.getPhone().equals(phone))
+            long otherAdmins = users.findByRoleInOrderByPhoneAsc(List.of(UserRole.ADMIN)).stream()
+                    .filter(u -> !u.getPhone().equals(phone))
                     .count();
             if (otherAdmins == 0) {
                 throw new org.springframework.web.server.ResponseStatusException(
@@ -173,6 +205,16 @@ public class AdminController {
         users.save(user);
         return Map.of("phone", user.getPhone(), "role", user.getRole().name(),
                 "name", user.getName() == null ? "" : user.getName());
+    }
+
+    private Map<String, Object> userDto(AppUser u) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", u.getId());
+        m.put("phone", u.getPhone());
+        m.put("name", u.getName() == null ? "" : u.getName());
+        m.put("role", u.getRole().name());
+        m.put("walletCoins", u.getWalletCoins());
+        return m;
     }
 
     private Map<String, Object> claimDto(BillClaim c) {

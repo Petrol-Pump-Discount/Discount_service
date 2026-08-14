@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, getToken } from '../api/client'
 import { Spinner } from '../components/Busy'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { TextInput } from '../components/Field'
 import { Shell } from '../components/Shell'
 import { validateCoins, validateRupees } from '../lib/validate'
@@ -21,6 +22,7 @@ export function RedeemPage({ onRole }: { onRole?: (r: string) => void }) {
   const [err, setErr] = useState('')
   const [paid, setPaid] = useState<PayRes | null>(null)
   const [busy, setBusy] = useState(false)
+  const [confirmPay, setConfirmPay] = useState(false)
   const [touched, setTouched] = useState(false)
 
   const maxRupees = (me?.walletCoins ?? 0) / 100
@@ -70,8 +72,7 @@ export function RedeemPage({ onRole }: { onRole?: (r: string) => void }) {
     }
   }
 
-  async function pay(e: FormEvent) {
-    e.preventDefault()
+  async function pay() {
     setTouched(true)
     if (!getToken()) {
       nav('/auth')
@@ -80,6 +81,7 @@ export function RedeemPage({ onRole }: { onRole?: (r: string) => void }) {
     const aErr = mode === 'rupees' ? validateRupees(amount, maxRupees) : validateCoins(amount, maxCoins)
     if (aErr) {
       setErr(aErr)
+      setConfirmPay(false)
       return
     }
     setErr('')
@@ -97,15 +99,45 @@ export function RedeemPage({ onRole }: { onRole?: (r: string) => void }) {
       setMe((prev) => (prev ? { ...prev, walletCoins: res.walletCoins } : prev))
       setAmount('')
       setTouched(false)
+      setConfirmPay(false)
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'Payment failed')
+      setConfirmPay(false)
     } finally {
       setBusy(false)
     }
   }
 
+  function onPaySubmit(e: FormEvent) {
+    e.preventDefault()
+    setTouched(true)
+    if (!getToken()) {
+      nav('/auth')
+      return
+    }
+    const aErr = mode === 'rupees' ? validateRupees(amount, maxRupees) : validateCoins(amount, maxCoins)
+    if (aErr) {
+      setErr(aErr)
+      return
+    }
+    setConfirmPay(true)
+  }
+
   return (
     <Shell role={me?.role} title="Redeem">
+      <ConfirmDialog
+        open={confirmPay}
+        title="Confirm payment?"
+        message={
+          mode === 'rupees'
+            ? `Are you sure you want to pay ₹${amount} from your wallet?`
+            : `Are you sure you want to redeem ${amount} coins?`
+        }
+        confirmLabel="Yes, pay"
+        busy={busy}
+        onCancel={() => !busy && setConfirmPay(false)}
+        onConfirm={() => void pay()}
+      />
       <div className="card">
         {pump && <p className="muted">{pump.name}</p>}
         {!getToken() && (
@@ -122,7 +154,7 @@ export function RedeemPage({ onRole }: { onRole?: (r: string) => void }) {
               </div>
               <div>{maxCoins.toLocaleString()} coins</div>
             </div>
-            <form className="stack" onSubmit={pay} style={{ marginTop: 12 }} noValidate>
+            <form className="stack" onSubmit={onPaySubmit} style={{ marginTop: 12 }} noValidate>
               <div className="row">
                 <button
                   type="button"

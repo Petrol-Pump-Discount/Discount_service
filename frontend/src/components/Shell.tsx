@@ -1,6 +1,8 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { getToken, setToken } from '../api/client'
+import { usePressFeedback } from '../hooks/usePressFeedback'
+import { ConfirmDialog } from './ConfirmDialog'
 
 export function TopNav({ role }: { role?: string }) {
   const nav = useNavigate()
@@ -34,28 +36,14 @@ export function TopNav({ role }: { role?: string }) {
         )}
       </nav>
 
-      {confirmOut && (
-        <div className="modal-backdrop" role="presentation" onClick={() => setConfirmOut(false)}>
-          <div
-            className="modal card"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="signout-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 id="signout-title">Sign out?</h3>
-            <p className="muted">Are you sure you want to sign out?</p>
-            <div className="row" style={{ justifyContent: 'flex-end', marginTop: 12 }}>
-              <button type="button" className="btn btn-dark" onClick={() => setConfirmOut(false)}>
-                No
-              </button>
-              <button type="button" className="btn btn-primary" onClick={doSignOut}>
-                Yes, sign out
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={confirmOut}
+        title="Sign out?"
+        message="Are you sure you want to sign out?"
+        confirmLabel="Yes, sign out"
+        onCancel={() => setConfirmOut(false)}
+        onConfirm={doSignOut}
+      />
     </>
   )
 }
@@ -71,6 +59,7 @@ export function Shell({
   role?: string
   title?: string
 }) {
+  usePressFeedback()
   return (
     <div className={`app-shell${wide ? ' wide-shell' : ''}`}>
       <header className="brand-bar">

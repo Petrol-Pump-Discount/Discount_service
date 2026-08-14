@@ -1,11 +1,13 @@
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, getToken } from '../api/client'
 import { LoadingBlock, Spinner } from '../components/Busy'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { TextInput } from '../components/Field'
 import { Shell } from '../components/Shell'
 import {
   normalizePhone,
+  normalizeVehicle,
   validateLat,
   validateLng,
   validatePhone,
@@ -13,6 +15,7 @@ import {
   validateRadiusMeters,
   validateReason,
   validateRejectIdsCsv,
+  validateVehicle,
 } from '../lib/validate'
 
 type Config = {
@@ -50,48 +53,74 @@ type Summary = {
 type Blacklist = { id: number; phone: string; reason: string }
 type StaffUser = { id: number; phone: string; name: string; role: string; walletCoins: number }
 
-const CONFIG_FIELDS = [
-  ['rate100to200', 'Paise/L 100–200', 0, 1000],
-  ['rate200to300', 'Paise/L 200–300', 0, 1000],
-  ['rate300plus', 'Paise/L 300+', 0, 1000],
-  ['bonusMidPct', 'Bonus % mid', 0, 100],
-  ['bonusHighPct', 'Bonus % high', 0, 100],
-  ['thresholdMidLitres', 'Threshold mid (L)', 0, 100000],
-  ['thresholdHighLitres', 'Threshold high (L)', 0, 100000],
-  ['autoRejectDays', 'Auto-reject days', 1, 30],
-] as const
+function Fold({
+  title,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  return (
+    <div className={`fold${open ? ' open' : ''}`}>
+      <button type="button" className="fold-head" onClick={onToggle} aria-expanded={open}>
+        <span>{title}</span>
+        <span className="fold-chevron" aria-hidden>
+          {open ? '▾' : '▸'}
+        </span>
+      </button>
+      {open && <div className="fold-body">{children}</div>}
+    </div>
+  )
+}
 
 export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
   const nav = useNavigate()
   const [cfg, setCfg] = useState<Config | null>(null)
   const [claims, setClaims] = useState<Claim[]>([])
+  const [claimsLoaded, setClaimsLoaded] = useState(false)
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
-  const [blacklist, setBlacklist] = useState<Blacklist[]>([])
+  const [blacklist, setBlacklist] = useState<Blacklist[] | null>(null)
+  const [blBusy, setBlBusy] = useState(false)
   const [staff, setStaff] = useState<StaffUser[]>([])
-  const [staffPhone, setStaffPhone] = useState('')
+  const [staffOpen, setStaffOpen] = useState(false)
+  const [searchPhone, setSearchPhone] = useState('')
+  const [searchVehicle, setSearchVehicle] = useState('')
+  const [searchHits, setSearchHits] = useState<StaffUser[]>([])
+  const [searchBusy, setSearchBusy] = useState(false)
   const [staffRole, setStaffRole] = useState('EMPLOYEE')
+  const [rolePhone, setRolePhone] = useState('')
   const [blPhone, setBlPhone] = useState('')
   const [blReason, setBlReason] = useState('')
+  const [confirmBl, setConfirmBl] = useState(false)
   const [rejectIds, setRejectIds] = useState('')
   const [pdf, setPdf] = useState<File | null>(null)
-  const [lat, setLat] = useState('13.765987')
-  const [lng, setLng] = useState('76.852652')
+  const [lat, setLat] = useState('13.7652412')
+  const [lng, setLng] = useState('76.8516552')
   const [radius, setRadius] = useState('50')
   const [qrUrl, setQrUrl] = useState('')
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
   const [pdfBusy, setPdfBusy] = useState(false)
   const [statusFilter, setStatusFilter] = useState('QUEUED')
+  const [claimsBusy, setClaimsBusy] = useState(false)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const [ratesOpen, setRatesOpen] = useState(false)
+  const [fold, setFold] = useState<Record<string, boolean>>({
+    paise: true,
+    bonus: false,
+    threshold: false,
+    days: false,
+    geo: false,
+  })
 
   const blPhoneErr = useMemo(
     () => (touched.blPhone ? validatePhone(blPhone) : null),
     [blPhone, touched.blPhone],
-  )
-  const staffPhoneErr = useMemo(
-    () => (touched.staffPhone ? validatePhone(staffPhone) : null),
-    [staffPhone, touched.staffPhone],
   )
   const blReasonErr = useMemo(
     () => (touched.blReason ? validateReason(blReason) : null),
@@ -108,7 +137,7 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
     [radius, touched.geo],
   )
 
-  async function load() {
+  async function loadBase() {
     if (!getToken()) {
       nav('/auth')
       return
@@ -123,11 +152,10 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
       setCfg(await api<Config>('/api/admin/config'))
       setSummary(await api<Summary>('/api/admin/reports/summary'))
       setAlerts(await api<Alert[]>('/api/admin/alerts'))
-      setBlacklist(await api<Blacklist[]>('/api/admin/blacklist'))
-      setStaff(await api<StaffUser[]>('/api/admin/users'))
-      setClaims(await api<Claim[]>(`/api/admin/claims?status=${statusFilter}`))
+      setStaff(await api<StaffUser[]>('/api/admin/users/staff'))
       const qr = await api<{ url: string; token: string }>('/api/redeem/qr-link', { auth: false })
       setQrUrl(`${window.location.origin}/redeem?token=${qr.token}`)
+      setErr('')
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'Failed')
       if ((ex as { status?: number }).status === 401) nav('/auth')
@@ -135,13 +163,23 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
   }
 
   useEffect(() => {
-    void load()
-  }, [statusFilter])
+    void loadBase()
+  }, [])
 
   async function saveConfig(e: FormEvent) {
     e.preventDefault()
     if (!cfg) return
-    for (const [key, label, min, max] of CONFIG_FIELDS) {
+    const checks: [keyof Config, string, number, number][] = [
+      ['rate100to200', 'Paise/L 100–200', 0, 1000],
+      ['rate200to300', 'Paise/L 200–300', 0, 1000],
+      ['rate300plus', 'Paise/L 300+', 0, 1000],
+      ['bonusMidPct', 'Bonus % mid', 0, 100],
+      ['bonusHighPct', 'Bonus % high', 0, 100],
+      ['thresholdMidLitres', 'Threshold mid (L)', 0, 100000],
+      ['thresholdHighLitres', 'Threshold high (L)', 0, 100000],
+      ['autoRejectDays', 'Auto-reject days', 1, 30],
+    ]
+    for (const [key, label, min, max] of checks) {
       const vErr = validatePositiveInt(String(cfg[key]), label, min, max)
       if (vErr) {
         setErr(vErr)
@@ -155,7 +193,7 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
     setErr('')
     try {
       setCfg(await api<Config>('/api/admin/config', { method: 'PUT', body: JSON.stringify(cfg) }))
-      setMsg('Saved')
+      setMsg('Rates saved')
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'Failed')
     }
@@ -190,7 +228,8 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
     try {
       const res = await api<Record<string, unknown>>('/api/admin/pdf', { method: 'POST', body: fd })
       setMsg(`Done · approved ${res.approved ?? '—'} · rejected ${res.rejected ?? '—'}`)
-      await load()
+      setSummary(await api<Summary>('/api/admin/reports/summary'))
+      setAlerts(await api<Alert[]>('/api/admin/alerts'))
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'PDF failed')
     } finally {
@@ -198,13 +237,13 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
     }
   }
 
-  async function addBlacklist(e: FormEvent) {
-    e.preventDefault()
+  async function addBlacklist() {
     setTouched((t) => ({ ...t, blPhone: true, blReason: true }))
     const pErr = validatePhone(blPhone)
     const rErr = validateReason(blReason)
     if (pErr || rErr) {
       setErr(pErr || rErr || '')
+      setConfirmBl(false)
       return
     }
     try {
@@ -214,48 +253,26 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
       })
       setBlPhone('')
       setBlReason('')
-      setTouched((t) => ({ ...t, blPhone: false, blReason: false }))
+      setConfirmBl(false)
       setMsg('Blacklisted')
-      await load()
+      if (blacklist) {
+        setBlacklist(await api<Blacklist[]>('/api/admin/blacklist'))
+      }
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'Failed')
+      setConfirmBl(false)
     }
   }
 
-  async function saveStaffRole(e: FormEvent) {
-    e.preventDefault()
-    setTouched((t) => ({ ...t, staffPhone: true }))
-    const pErr = validatePhone(staffPhone)
-    if (pErr) {
-      setErr(pErr)
-      return
-    }
+  async function fetchBlacklist() {
+    setBlBusy(true)
     setErr('')
     try {
-      await api('/api/admin/users/role', {
-        method: 'PUT',
-        body: JSON.stringify({ phone: normalizePhone(staffPhone), role: staffRole }),
-      })
-      setStaffPhone('')
-      setTouched((t) => ({ ...t, staffPhone: false }))
-      setMsg(`Role set: ${normalizePhone(staffPhone)} → ${staffRole}`)
-      await load()
+      setBlacklist(await api<Blacklist[]>('/api/admin/blacklist'))
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'Failed')
-    }
-  }
-
-  async function changeExistingRole(phone: string, role: string) {
-    setErr('')
-    try {
-      await api('/api/admin/users/role', {
-        method: 'PUT',
-        body: JSON.stringify({ phone, role }),
-      })
-      setMsg(`${phone} → ${role}`)
-      await load()
-    } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Failed')
+    } finally {
+      setBlBusy(false)
     }
   }
 
@@ -284,10 +301,120 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
     }
   }
 
+  async function searchUser(e: FormEvent) {
+    e.preventDefault()
+    if (!searchPhone.trim() && !searchVehicle.trim()) {
+      setErr('Enter phone or vehicle to search')
+      return
+    }
+    if (searchPhone.trim()) {
+      const pErr = validatePhone(searchPhone)
+      if (pErr) {
+        setErr(pErr)
+        return
+      }
+    }
+    if (searchVehicle.trim()) {
+      const vErr = validateVehicle(searchVehicle)
+      if (vErr) {
+        setErr(vErr)
+        return
+      }
+    }
+    setSearchBusy(true)
+    setErr('')
+    try {
+      const q = new URLSearchParams()
+      if (searchPhone.trim()) q.set('phone', normalizePhone(searchPhone))
+      if (searchVehicle.trim()) q.set('vehicle', normalizeVehicle(searchVehicle))
+      setSearchHits(await api<StaffUser[]>(`/api/admin/users/search?${q}`))
+      if (searchPhone.trim()) setRolePhone(normalizePhone(searchPhone))
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'Search failed')
+      setSearchHits([])
+    } finally {
+      setSearchBusy(false)
+    }
+  }
+
+  async function setRole(phone: string, role: string) {
+    setErr('')
+    try {
+      await api('/api/admin/users/role', {
+        method: 'PUT',
+        body: JSON.stringify({ phone, role }),
+      })
+      setMsg(`${phone} → ${role}`)
+      setStaff(await api<StaffUser[]>('/api/admin/users/staff'))
+      setSearchHits((prev) => prev.map((u) => (u.phone === phone ? { ...u, role } : u)))
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'Failed')
+    }
+  }
+
+  async function applyRole(e: FormEvent) {
+    e.preventDefault()
+    const pErr = validatePhone(rolePhone)
+    if (pErr) {
+      setErr(pErr)
+      return
+    }
+    await setRole(normalizePhone(rolePhone), staffRole)
+  }
+
+  async function clearAlert(id: number) {
+    try {
+      await api(`/api/admin/alerts/${id}`, { method: 'DELETE' })
+      setAlerts((prev) => prev.filter((a) => a.id !== id))
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'Failed to clear alert')
+    }
+  }
+
+  async function applyClaimsFilter(e: FormEvent) {
+    e.preventDefault()
+    setClaimsBusy(true)
+    setErr('')
+    try {
+      setClaims(await api<Claim[]>(`/api/admin/claims?status=${statusFilter}`))
+      setClaimsLoaded(true)
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'Failed')
+    } finally {
+      setClaimsBusy(false)
+    }
+  }
+
+  function numField(key: keyof Config, label: string) {
+    if (!cfg) return null
+    return (
+      <TextInput
+        key={String(key)}
+        label={label}
+        inputMode="numeric"
+        value={String(cfg[key])}
+        onChange={(e) => {
+          const d = e.target.value.replace(/\D/g, '').slice(0, 8)
+          setCfg({ ...cfg, [key]: d === '' ? 0 : Number(d) })
+        }}
+      />
+    )
+  }
+
   return (
     <Shell wide role="ADMIN" title="Admin">
+      <ConfirmDialog
+        open={confirmBl}
+        title="Blacklist user?"
+        message={`Are you sure you want to blacklist ${normalizePhone(blPhone) || 'this number'}?`}
+        confirmLabel="Yes, blacklist"
+        danger
+        onCancel={() => setConfirmBl(false)}
+        onConfirm={() => void addBlacklist()}
+      />
+
       <div className="dash-grid">
-        <div className="card">
+        <div className="card span-2">
           {summary && (
             <p className="muted" style={{ marginTop: 0 }}>
               {summary.businessDay} · queue {summary.queuedClaims} · redeems ₹{summary.redeemRupees}
@@ -295,20 +422,33 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
           )}
           {msg && <p className="ok">{msg}</p>}
           {err && <p className="err">{err}</p>}
-          <h3>Pump QR</h3>
+          <h3>Alerts</h3>
+          {alerts.length === 0 && <p className="muted">No alerts</p>}
+          {alerts.map((a) => (
+            <div key={a.id} className="live-row" style={{ alignItems: 'center' }}>
+              <div>
+                <div>{a.message}</div>
+                <div className="muted">{new Date(a.createdAt).toLocaleString()}</div>
+              </div>
+              <button type="button" className="btn btn-dark" onClick={() => void clearAlert(a.id)}>
+                Clear
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="card">
+          <h3>1. Pump QR</h3>
           <input readOnly value={qrUrl} onFocus={(e) => e.target.select()} />
         </div>
 
         <div className={`card${pdfBusy ? ' is-busy' : ''}`}>
           {pdfBusy && (
             <div className="loading-veil">
-              <LoadingBlock
-                title="Matching PDF…"
-                detail="Parsing Transaction IDs and crediting coins. Please wait."
-              />
+              <LoadingBlock title="Matching PDF…" detail="Please wait." />
             </div>
           )}
-          <h3>SiteOmat PDF</h3>
+          <h3>2. SiteOmat PDF</h3>
           <form className="stack" onSubmit={uploadPdf} noValidate aria-busy={pdfBusy}>
             <label className="field">
               <span className="field-label">PDF</span>
@@ -323,8 +463,7 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
               label="Force-reject IDs"
               value={rejectIds}
               error={rejectErr}
-              hint="Optional, comma-separated"
-              placeholder="optional"
+              hint="Optional"
               onBlur={() => setTouched((t) => ({ ...t, reject: true }))}
               onChange={(e) => setRejectIds(e.target.value.toUpperCase())}
             />
@@ -338,94 +477,84 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
           </form>
         </div>
 
-        {cfg && (
-          <div className="card">
-            <h3>Rates</h3>
-            <form className="stack" onSubmit={saveConfig} noValidate>
-              {CONFIG_FIELDS.map(([key, label, min, max]) => (
-                <TextInput
-                  key={key}
-                  label={label}
-                  inputMode="numeric"
-                  value={String(cfg[key])}
-                  onChange={(e) => {
-                    const d = e.target.value.replace(/\D/g, '').slice(0, 8)
-                    setCfg({ ...cfg, [key]: d === '' ? 0 : Number(d) })
-                  }}
-                  hint={`${min}–${max}`}
-                />
-              ))}
-              <button className="btn btn-primary" type="submit">
-                Save
+        <div className="card span-2">
+          <h3>3. Staff & roles</h3>
+          <form className="stack" onSubmit={searchUser} noValidate>
+            <div className="row" style={{ alignItems: 'end' }}>
+              <TextInput
+                label="Search phone"
+                inputMode="numeric"
+                maxLength={10}
+                value={searchPhone}
+                placeholder="9845134394"
+                onChange={(e) => setSearchPhone(normalizePhone(e.target.value))}
+              />
+              <TextInput
+                label="Or vehicle"
+                maxLength={12}
+                value={searchVehicle}
+                placeholder="KA01AB1234"
+                onChange={(e) => setSearchVehicle(normalizeVehicle(e.target.value))}
+              />
+              <button className={`btn btn-primary${searchBusy ? ' btn-busy' : ''}`} type="submit" disabled={searchBusy}>
+                {searchBusy ? <Spinner label="Search…" /> : 'Search'}
               </button>
-            </form>
-          </div>
-        )}
-
-        <div className="card">
-          <h3>Geofence</h3>
-          <form className="stack" onSubmit={saveGeo} noValidate>
-            <TextInput
-              label="Latitude"
-              inputMode="decimal"
-              value={lat}
-              error={latErr}
-              onBlur={() => setTouched((t) => ({ ...t, geo: true }))}
-              onChange={(e) => setLat(e.target.value.replace(/[^\d.-]/g, '').slice(0, 12))}
-            />
-            <TextInput
-              label="Longitude"
-              inputMode="decimal"
-              value={lng}
-              error={lngErr}
-              onBlur={() => setTouched((t) => ({ ...t, geo: true }))}
-              onChange={(e) => setLng(e.target.value.replace(/[^\d.-]/g, '').slice(0, 12))}
-            />
-            <TextInput
-              label="Radius (m)"
-              inputMode="decimal"
-              value={radius}
-              error={radiusErr}
-              onBlur={() => setTouched((t) => ({ ...t, geo: true }))}
-              onChange={(e) => setRadius(e.target.value.replace(/[^\d.]/g, '').slice(0, 6))}
-            />
-            <button
-              className="btn btn-dark"
-              type="submit"
-              disabled={!!validateLat(lat) || !!validateLng(lng) || !!validateRadiusMeters(radius)}
-            >
-              Update
-            </button>
+            </div>
           </form>
-        </div>
-
-        <div className="card">
-          <h3>Staff roles</h3>
-          <p className="muted">Stored in DB. Promote / demote by phone.</p>
-          <form className="stack" onSubmit={saveStaffRole} noValidate>
-            <TextInput
-              label="Mobile"
-              inputMode="numeric"
-              maxLength={10}
-              value={staffPhone}
-              error={staffPhoneErr}
-              placeholder="9448166221"
-              onBlur={() => setTouched((t) => ({ ...t, staffPhone: true }))}
-              onChange={(e) => setStaffPhone(normalizePhone(e.target.value))}
-            />
-            <label className="field">
-              <span className="field-label">Role</span>
-              <select value={staffRole} onChange={(e) => setStaffRole(e.target.value)}>
-                <option value="ADMIN">ADMIN</option>
-                <option value="EMPLOYEE">EMPLOYEE</option>
-                <option value="DRIVER">DRIVER</option>
-              </select>
-            </label>
-            <button className="btn btn-primary" type="submit" disabled={!!validatePhone(staffPhone)}>
-              Set role
-            </button>
+          {searchHits.length > 0 && (
+            <div className="table-wrap" style={{ marginTop: 12 }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Phone</th>
+                    <th>Name</th>
+                    <th>Role</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {searchHits.map((u) => (
+                    <tr key={u.id}>
+                      <td>{u.phone}</td>
+                      <td>{u.name || '—'}</td>
+                      <td>
+                        <select value={u.role} onChange={(e) => void setRole(u.phone, e.target.value)}>
+                          <option value="ADMIN">ADMIN</option>
+                          <option value="EMPLOYEE">EMPLOYEE</option>
+                          <option value="DRIVER">DRIVER</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <form className="stack" onSubmit={applyRole} noValidate style={{ marginTop: 12 }}>
+            <p className="muted" style={{ margin: 0 }}>
+              Or set role by phone (creates user if needed)
+            </p>
+            <div className="row" style={{ alignItems: 'end' }}>
+              <TextInput
+                label="Mobile"
+                inputMode="numeric"
+                maxLength={10}
+                value={rolePhone}
+                onChange={(e) => setRolePhone(normalizePhone(e.target.value))}
+              />
+              <label className="field">
+                <span className="field-label">Role</span>
+                <select value={staffRole} onChange={(e) => setStaffRole(e.target.value)}>
+                  <option value="ADMIN">ADMIN</option>
+                  <option value="EMPLOYEE">EMPLOYEE</option>
+                  <option value="DRIVER">DRIVER</option>
+                </select>
+              </label>
+              <button className="btn btn-primary" type="submit" disabled={!!validatePhone(rolePhone)}>
+                Set role
+              </button>
+            </div>
           </form>
-          <div className="table-wrap" style={{ marginTop: 12 }}>
+          <Fold title={`Employees & admins (${staff.length})`} open={staffOpen} onToggle={() => setStaffOpen((o) => !o)}>
             <table className="table">
               <thead>
                 <tr>
@@ -440,10 +569,7 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
                     <td>{u.phone}</td>
                     <td>{u.name || '—'}</td>
                     <td>
-                      <select
-                        value={u.role}
-                        onChange={(e) => void changeExistingRole(u.phone, e.target.value)}
-                      >
+                      <select value={u.role} onChange={(e) => void setRole(u.phone, e.target.value)}>
                         <option value="ADMIN">ADMIN</option>
                         <option value="EMPLOYEE">EMPLOYEE</option>
                         <option value="DRIVER">DRIVER</option>
@@ -453,12 +579,24 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
                 ))}
               </tbody>
             </table>
-          </div>
+          </Fold>
         </div>
 
         <div className="card">
-          <h3>Blacklist</h3>
-          <form className="stack" onSubmit={addBlacklist} noValidate>
+          <h3>4. Blacklist</h3>
+          <form
+            className="stack"
+            onSubmit={(e) => {
+              e.preventDefault()
+              setTouched((t) => ({ ...t, blPhone: true, blReason: true }))
+              if (validatePhone(blPhone) || validateReason(blReason)) {
+                setErr(validatePhone(blPhone) || validateReason(blReason) || '')
+                return
+              }
+              setConfirmBl(true)
+            }}
+            noValidate
+          >
             <TextInput
               label="Mobile"
               inputMode="numeric"
@@ -484,69 +622,169 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
               Blacklist
             </button>
           </form>
-          <ul>
-            {blacklist.map((b) => (
-              <li key={b.id}>
-                {b.phone} — {b.reason || '—'}
-              </li>
-            ))}
-          </ul>
-          <h3 style={{ marginTop: 16 }}>Alerts</h3>
-          {alerts.length === 0 && <p className="muted">None</p>}
-          {alerts.map((a) => (
-            <div key={a.id} className="live-row">
-              <div>{a.message}</div>
-              <div className="muted">{new Date(a.createdAt).toLocaleString()}</div>
+          <button
+            type="button"
+            className={`btn btn-dark${blBusy ? ' btn-busy' : ''}`}
+            style={{ marginTop: 12 }}
+            disabled={blBusy}
+            onClick={() => void fetchBlacklist()}
+          >
+            {blBusy ? <Spinner label="Loading…" /> : 'Fetch blacklisted users'}
+          </button>
+          {blacklist && (
+            <ul style={{ marginTop: 12 }}>
+              {blacklist.length === 0 && <li className="muted">None</li>}
+              {blacklist.map((b) => (
+                <li key={b.id}>
+                  {b.phone} — {b.reason || '—'}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className={`card${claimsBusy ? ' is-busy' : ''}`}>
+          {claimsBusy && (
+            <div className="loading-veil">
+              <LoadingBlock title="Loading claims…" />
             </div>
-          ))}
+          )}
+          <h3>5. Claims</h3>
+          <form className="stack" onSubmit={applyClaimsFilter} noValidate>
+            <label className="field">
+              <span className="field-label">Status filter</span>
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="QUEUED">QUEUED</option>
+                <option value="APPROVED">APPROVED</option>
+                <option value="REJECTED">REJECTED</option>
+              </select>
+            </label>
+            <button className={`btn btn-primary${claimsBusy ? ' btn-busy' : ''}`} type="submit" disabled={claimsBusy}>
+              {claimsBusy ? <Spinner label="Loading…" /> : 'Show claims'}
+            </button>
+          </form>
+          {claimsLoaded && (
+            <div style={{ overflowX: 'auto', marginTop: 8 }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Phone</th>
+                    <th>Vehicle</th>
+                    <th>Receipt</th>
+                    <th>L</th>
+                    <th>Status</th>
+                    <th>Coins</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {claims.map((c) => (
+                    <tr key={c.id}>
+                      <td>{c.id}</td>
+                      <td>{c.phone}</td>
+                      <td>{c.vehicleNo}</td>
+                      <td>{c.receiptKey}</td>
+                      <td>{c.volume}</td>
+                      <td>
+                        <span
+                          className={`badge ${
+                            c.status === 'APPROVED' ? 'ok' : c.status === 'REJECTED' ? 'bad' : 'warn'
+                          }`}
+                        >
+                          {c.status}
+                        </span>
+                      </td>
+                      <td>{c.coinsCredited}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {claims.length === 0 && <p className="muted">No claims for this status</p>}
+            </div>
+          )}
         </div>
 
         <div className="card span-2">
-          <h3>Claims</h3>
-          <label className="field">
-            <span className="field-label">Status</span>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="QUEUED">QUEUED</option>
-              <option value="APPROVED">APPROVED</option>
-              <option value="REJECTED">REJECTED</option>
-            </select>
-          </label>
-          <div style={{ overflowX: 'auto', marginTop: 8 }}>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Phone</th>
-                  <th>Vehicle</th>
-                  <th>Receipt</th>
-                  <th>L</th>
-                  <th>Status</th>
-                  <th>Coins</th>
-                </tr>
-              </thead>
-              <tbody>
-                {claims.map((c) => (
-                  <tr key={c.id}>
-                    <td>{c.id}</td>
-                    <td>{c.phone}</td>
-                    <td>{c.vehicleNo}</td>
-                    <td>{c.receiptKey}</td>
-                    <td>{c.volume}</td>
-                    <td>
-                      <span
-                        className={`badge ${
-                          c.status === 'APPROVED' ? 'ok' : c.status === 'REJECTED' ? 'bad' : 'warn'
-                        }`}
-                      >
-                        {c.status}
-                      </span>
-                    </td>
-                    <td>{c.coinsCredited}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Fold title="6. Rates & geofence" open={ratesOpen} onToggle={() => setRatesOpen((o) => !o)}>
+            {cfg && (
+              <form className="stack" onSubmit={saveConfig} noValidate>
+                <Fold
+                  title="Paise / litre"
+                  open={!!fold.paise}
+                  onToggle={() => setFold((f) => ({ ...f, paise: !f.paise }))}
+                >
+                  {numField('rate100to200', 'Paise/L 100–200')}
+                  {numField('rate200to300', 'Paise/L 200–300')}
+                  {numField('rate300plus', 'Paise/L 300+')}
+                </Fold>
+                <Fold
+                  title="Bonus %"
+                  open={!!fold.bonus}
+                  onToggle={() => setFold((f) => ({ ...f, bonus: !f.bonus }))}
+                >
+                  {numField('bonusMidPct', 'Bonus % mid')}
+                  {numField('bonusHighPct', 'Bonus % high')}
+                </Fold>
+                <Fold
+                  title="Threshold (L)"
+                  open={!!fold.threshold}
+                  onToggle={() => setFold((f) => ({ ...f, threshold: !f.threshold }))}
+                >
+                  {numField('thresholdMidLitres', 'Threshold mid (L)')}
+                  {numField('thresholdHighLitres', 'Threshold high (L)')}
+                </Fold>
+                <Fold
+                  title="Auto-reject days"
+                  open={!!fold.days}
+                  onToggle={() => setFold((f) => ({ ...f, days: !f.days }))}
+                >
+                  {numField('autoRejectDays', 'Auto-reject days')}
+                </Fold>
+                <button className="btn btn-primary" type="submit">
+                  Save rates
+                </button>
+              </form>
+            )}
+            <Fold
+              title="Geofence"
+              open={!!fold.geo}
+              onToggle={() => setFold((f) => ({ ...f, geo: !f.geo }))}
+            >
+              <form className="stack" onSubmit={saveGeo} noValidate>
+                <TextInput
+                  label="Latitude"
+                  inputMode="decimal"
+                  value={lat}
+                  error={latErr}
+                  onBlur={() => setTouched((t) => ({ ...t, geo: true }))}
+                  onChange={(e) => setLat(e.target.value.replace(/[^\d.-]/g, '').slice(0, 12))}
+                />
+                <TextInput
+                  label="Longitude"
+                  inputMode="decimal"
+                  value={lng}
+                  error={lngErr}
+                  onBlur={() => setTouched((t) => ({ ...t, geo: true }))}
+                  onChange={(e) => setLng(e.target.value.replace(/[^\d.-]/g, '').slice(0, 12))}
+                />
+                <TextInput
+                  label="Radius (m)"
+                  inputMode="decimal"
+                  value={radius}
+                  error={radiusErr}
+                  onBlur={() => setTouched((t) => ({ ...t, geo: true }))}
+                  onChange={(e) => setRadius(e.target.value.replace(/[^\d.]/g, '').slice(0, 6))}
+                />
+                <button
+                  className="btn btn-dark"
+                  type="submit"
+                  disabled={!!validateLat(lat) || !!validateLng(lng) || !!validateRadiusMeters(radius)}
+                >
+                  Update geofence
+                </button>
+              </form>
+            </Fold>
+          </Fold>
         </div>
       </div>
     </Shell>

@@ -8,4 +8,5 @@ public interface VehicleLinkRepository extends JpaRepository<VehicleLink, Long> 
     List<VehicleLink> findByUser(AppUser user);
     Optional<VehicleLink> findByUserAndRegNo(AppUser user, String regNo);
     boolean existsByUserAndRegNo(AppUser user, String regNo);
+    List<VehicleLink> findByRegNo(String regNo);
 }
