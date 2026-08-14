@@ -11,6 +11,7 @@ public interface BillClaimRepository extends JpaRepository<BillClaim, Long> {
     boolean existsByBillNoIgnoreCase(String billNo);
     List<BillClaim> findByStatusOrderByCreatedAtAsc(ClaimStatus status);
     List<BillClaim> findByUserAndCreatedAtAfter(AppUser user, Instant after);
+    List<BillClaim> findByUserOrderByCreatedAtDesc(AppUser user);
     @Query("select coalesce(sum(c.volumeLitres),0) from BillClaim c where c.user = ?1 and c.status = com.petrolpump.discount.domain.ClaimStatus.APPROVED and c.decidedAt >= ?2")
     double sumApprovedVolumeSince(AppUser user, Instant since);
     long countByUserAndCreatedAtAfter(AppUser user, Instant after);

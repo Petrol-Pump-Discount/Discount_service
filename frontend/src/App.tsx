@@ -4,6 +4,7 @@ import { api, getToken } from './api/client'
 import { AccountPage } from './pages/AccountPage'
 import { AdminPage } from './pages/AdminPage'
 import { AuthPage } from './pages/AuthPage'
+import { ClaimsPage } from './pages/ClaimsPage'
 import { EmployeePage } from './pages/EmployeePage'
 import { HomePage } from './pages/HomePage'
 import { RedeemPage } from './pages/RedeemPage'
@@ -25,6 +26,7 @@ export default function App() {
         <Route path="/" element={<HomePage role={role} />} />
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/account" element={<AccountPage onRole={setRole} />} />
+        <Route path="/claims" element={<ClaimsPage onRole={setRole} />} />
         <Route path="/upload" element={<UploadPage role={role} />} />
         <Route path="/redeem" element={<RedeemPage onRole={setRole} />} />
         <Route path="/admin" element={<AdminPage onRole={setRole} />} />
