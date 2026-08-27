@@ -6,9 +6,20 @@ import com.petrolpump.discount.service.AuthService;
 import com.petrolpump.discount.service.BusinessDay;
 import com.petrolpump.discount.service.PdfMatchService;
 import com.petrolpump.discount.service.VehicleNormalizer;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -27,15 +38,18 @@ public class AdminController {
     private final PumpRepository pumps;
     private final AppUserRepository users;
     private final VehicleLinkRepository vehicles;
+    private final Path uploadDir;
 
     public AdminController(AuthService auth, PdfMatchService pdfMatch, LoyaltyConfigRepository configs,
                            PhoneBlacklistRepository blacklist, RejectIdRepository rejectIds,
                            BillClaimRepository claims, RedeemTransactionRepository redeems,
                            AdminAlertRepository alerts, PumpRepository pumps, AppUserRepository users,
-                           VehicleLinkRepository vehicles) {
+                           VehicleLinkRepository vehicles,
+                           @Value("${app.upload-dir:./uploads}") String uploadDir) {
         this.auth = auth; this.pdfMatch = pdfMatch; this.configs = configs; this.blacklist = blacklist;
         this.rejectIds = rejectIds; this.claims = claims; this.redeems = redeems; this.alerts = alerts;
         this.pumps = pumps; this.users = users; this.vehicles = vehicles;
+        this.uploadDir = Paths.get(uploadDir).toAbsolutePath().normalize();
     }
 
     private void admin(String token) { auth.requireRole(token, UserRole.ADMIN); }
@@ -86,6 +100,30 @@ public class AdminController {
         List<BillClaim> list = status == null ? claims.findAll()
                 : claims.findByStatusOrderByCreatedAtAsc(ClaimStatus.valueOf(status));
         return list.stream().map(this::claimDto).collect(Collectors.toList());
+    }
+
+    @GetMapping("/claims/{id}/photo")
+    public ResponseEntity<Resource> claimPhoto(@RequestHeader("X-Session-Token") String token,
+                                               @PathVariable Long id) {
+        admin(token);
+        BillClaim c = claims.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Claim not found"));
+        String stored = c.getImagePath();
+        if (stored == null || stored.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No photo for this claim");
+        }
+        Path file = Paths.get(stored).toAbsolutePath().normalize();
+        if (!file.startsWith(uploadDir) || !Files.isRegularFile(file)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Photo file missing");
+        }
+        String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
+        MediaType type = name.endsWith(".png") ? MediaType.IMAGE_PNG
+                : name.endsWith(".webp") ? MediaType.parseMediaType("image/webp")
+                : MediaType.IMAGE_JPEG;
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=300")
+                .contentType(type)
+                .body(new FileSystemResource(file));
     }
 
     @GetMapping("/alerts")
@@ -248,6 +286,7 @@ public class AdminController {
         m.put("coinsCredited", c.getCoinsCredited());
         m.put("rejectReason", c.getRejectReason());
         m.put("createdAt", c.getCreatedAt().toString());
+        m.put("hasPhoto", c.getImagePath() != null && !c.getImagePath().isBlank());
         return m;
     }
 }
