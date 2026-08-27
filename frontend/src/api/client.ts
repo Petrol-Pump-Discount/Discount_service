@@ -44,7 +44,12 @@ export async function api<T = unknown>(
     const t = getToken()
     if (t) headers.set('X-Session-Token', t)
   }
-  const res = await fetch(path, { ...opts, headers })
+  let res: Response
+  try {
+    res = await fetch(path, { ...opts, headers })
+  } catch {
+    throw new ApiError(0, 'Network error — check connection / try again (www and non-www both supported after update)')
+  }
   if (!res.ok) await parseError(res)
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>

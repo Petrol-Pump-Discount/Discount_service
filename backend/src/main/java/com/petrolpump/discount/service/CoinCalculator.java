@@ -6,9 +6,10 @@ public final class CoinCalculator {
     private CoinCalculator() {}
 
     public static long baseCoins(double volumeLitres, LoyaltyConfig cfg) {
-        if (volumeLitres < 100) return 0;
+        if (volumeLitres <= 0) return 0;
         int rate;
-        if (volumeLitres < 200) rate = cfg.getRate100to200();
+        if (volumeLitres < 100) rate = cfg.getRate0to100();
+        else if (volumeLitres < 200) rate = cfg.getRate100to200();
         else if (volumeLitres < 300) rate = cfg.getRate200to300();
         else rate = cfg.getRate300plus();
         return (long) Math.floor(rate * volumeLitres);

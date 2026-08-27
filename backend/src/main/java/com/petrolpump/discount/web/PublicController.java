@@ -30,6 +30,7 @@ public class PublicController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Pump not configured"));
         LoyaltyConfig cfg = configs.findById(1L).orElseGet(LoyaltyConfig::new);
         Map<String, Object> rates = new LinkedHashMap<>();
+        rates.put("rate0to100", cfg.getRate0to100());
         rates.put("rate100to200", cfg.getRate100to200());
         rates.put("rate200to300", cfg.getRate200to300());
         rates.put("rate300plus", cfg.getRate300plus());
@@ -38,7 +39,7 @@ public class PublicController {
         rates.put("thresholdMidLitres", cfg.getThresholdMidLitres());
         rates.put("thresholdHighLitres", cfg.getThresholdHighLitres());
         rates.put("unit", "paise_per_litre");
-        rates.put("note", "1 coin = 1 paisa. Bills under 100 L earn 0 coins.");
+        rates.put("note", "1 coin = 1 paisa.");
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", p.getName());

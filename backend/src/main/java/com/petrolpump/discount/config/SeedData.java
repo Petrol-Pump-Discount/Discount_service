@@ -13,6 +13,13 @@ public class SeedData {
         return args -> {
             if (configs.findById(1L).isEmpty()) {
                 configs.save(new LoyaltyConfig());
+            } else {
+                LoyaltyConfig cfg = configs.findById(1L).orElseThrow();
+                // Backfill new 0–100 L tier once (default 10 paise/coin per litre).
+                if (cfg.getRate0to100() <= 0) {
+                    cfg.setRate0to100(10);
+                    configs.save(cfg);
+                }
             }
             // Seed once only — geo/rates/station details are admin-editable in DB afterwards.
             if (pumps.count() == 0) {

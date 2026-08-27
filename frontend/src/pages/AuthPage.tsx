@@ -38,11 +38,10 @@ export function AuthPage() {
 
   async function requestOtp(e: FormEvent) {
     e.preventDefault()
-    setTouched({ phone: true, name: true })
+    setTouched({ phone: true })
     const pErr = validatePhone(phone)
-    const nErr = validateName(name)
-    if (pErr || nErr) {
-      setErr(pErr || nErr || '')
+    if (pErr) {
+      setErr(pErr)
       return
     }
     setErr('')
@@ -125,7 +124,7 @@ export function AuthPage() {
             />
             <button
               className={`btn btn-primary${busy ? ' btn-busy' : ''}`}
-              disabled={busy || !!validatePhone(phone) || !!validateName(name)}
+              disabled={busy || !!validatePhone(phone)}
               type="submit"
             >
               {busy ? <Spinner label="Sending…" /> : 'Send OTP'}

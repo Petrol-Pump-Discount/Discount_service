@@ -20,6 +20,7 @@ import {
 
 type Config = {
   id: number
+  rate0to100: number
   rate100to200: number
   rate200to300: number
   rate300plus: number
@@ -193,6 +194,7 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
     e.preventDefault()
     if (!cfg) return
     const checks: [keyof Config, string, number, number][] = [
+      ['rate0to100', 'Paise/L 0–100', 0, 1000],
       ['rate100to200', 'Paise/L 100–200', 0, 1000],
       ['rate200to300', 'Paise/L 200–300', 0, 1000],
       ['rate300plus', 'Paise/L 300+', 0, 1000],
@@ -741,6 +743,7 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
                   open={!!fold.paise}
                   onToggle={() => setFold((f) => ({ ...f, paise: !f.paise }))}
                 >
+                  {numField('rate0to100', 'Paise/L 0–100')}
                   {numField('rate100to200', 'Paise/L 100–200')}
                   {numField('rate200to300', 'Paise/L 200–300')}
                   {numField('rate300plus', 'Paise/L 300+')}
