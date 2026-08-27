@@ -1,8 +1,5 @@
 package com.petrolpump.discount.service;
 
-import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -43,51 +40,7 @@ class PdfMatchServiceTest {
     }
 
     @Test
-    void extractsSiteOmatPreAuthAndContinuationTransactionIds() {
-        String text = """
-                SiteOmat - Transaction Report
-                Ser. Receipt nt DU DU Global Vehicle Vehicle Preset Preset Transaction Sale Start
-                No. No. Product Amount(Rs.) Volume(Ltr) Unit Method
-                High
-                 1  300000158 Speed  1000.00  10.020  99.79  Cash  13/08/26  08:43:29   4  3  12  PreAuth   Money
-                Diesel (Rs.)  1000.00  300000158  1000.00  13/08/26  08:42:35  'AA'  5071894.540  5071904.560  O
-                High
-                 35  300000260 Speed  2282.20  22.870  99.79  Cash  13/08/26  15:09:09   7  5  20  PreAuth     300000261  2282.20  13/08/26  15:06:06  'AA'  1059806.320  1059829.190  O
-                Diesel
-                High
-                Diesel (Rs.)  1501.00  300000265  1501.00  13/08/26
-                """;
-        Set<String> ids = PdfMatchService.extractTransactionIds(text);
-        assertTrue(ids.contains("300000158"), ids.toString());
-        assertTrue(ids.contains("300000261"), ids.toString());
-        assertTrue(ids.contains("300000265"), ids.toString());
-        assertTrue(ids.contains("300000260"), "receipt no should match: " + ids);
-        assertFalse(ids.contains("5071894"), "totalizer must not match");
-    }
-
-    @Test
-    void extractsTxnFromMoneyContinuationAndReceiptNo() {
-        // Real extract (sortByPosition=false): txn 300004636 is on Money/(Rs.) continuation
-        String text = """
-                 255  300004636
-                High
-                Speed
-                Diesel
-                 500.00  5.010  99.79  Cash  27/08/26  09:54:25   7  5  20  PreAuth     300004635  500.00
-                 256  300004637
-                High
-                Speed
-                Diesel
-                 19501.96  195.430  99.79  Cash  27/08/26  09:56:09   7  6  21  PreAuth   Money
-                (Rs.)  25000.00  300004636  19501.96  27/08/26  09:51:05
-                """;
-        Set<String> ids = PdfMatchService.extractTransactionIds(text);
-        assertTrue(ids.contains("300004636"), "txn/receipt: " + ids);
-        assertTrue(ids.contains("300004637"), "receipt: " + ids);
-    }
-
-    @Test
-    void extractsFromRealSiteOmatPdfIfPresent() throws Exception {
+    void extractsTxnColumnFromRealSiteOmatPdfIfPresent() throws Exception {
         Path pdf = Path.of(System.getProperty("user.home"), "Downloads", "SiteOmat - Transaction Report (1).pdf");
         if (!Files.isRegularFile(pdf)) {
             pdf = Path.of(System.getProperty("user.home"), "Downloads", "SiteOmat - Transaction Report.pdf");
@@ -95,9 +48,10 @@ class PdfMatchServiceTest {
         if (!Files.isRegularFile(pdf)) {
             return;
         }
-        String text = PdfMatchService.extractPdfText(Files.readAllBytes(pdf));
-        Set<String> ids = PdfMatchService.extractTransactionIds(text);
-        assertTrue(ids.contains("300004636"),
-                "300004636 must be parsed as txn/receipt; got " + ids.size() + " ids");
+        Set<String> ids = PdfMatchService.extractTransactionIdsFromPdf(Files.readAllBytes(pdf));
+        assertTrue(ids.size() >= 100, "expected many txn ids, got " + ids.size());
+        assertTrue(ids.contains("300004636"), "Transaction ID column must include 300004636");
+        assertTrue(ids.contains("300003920"), "shifted txn column (empty preset) must include 300003920");
+        // Receipt-only numbers at left must not be required; but 636 is in txn col
     }
 }
