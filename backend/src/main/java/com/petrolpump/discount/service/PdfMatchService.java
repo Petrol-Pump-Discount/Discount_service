@@ -38,6 +38,16 @@ public class PdfMatchService {
     private static final Pattern LABELED_TXN = Pattern.compile(
             "(?i)(?:transaction\\s*id|trns\\.?\\s*id|txn\\s*id)\\s*[:#\\-]?\\s*(\\d{6,})");
 
+    /**
+     * SiteOmat "Receipt No." after serial: {@code 255  300004636}.
+     * OCR often stores this as FCC ID; include it so bills still match when txn text is jumbled.
+     */
+    private static final Pattern RECEIPT_AFTER_SER = Pattern.compile(
+            "(?m)(?:^|\\n)\\s*\\d{1,4}\\s+(3\\d{8})\\b");
+
+    private static final Pattern RECEIPT_BEFORE_PRODUCT = Pattern.compile(
+            "(?i)\\b\\d{1,4}\\s+(3\\d{8})\\s+(?:High|Speed|Diesel|Petrol|MS|HSD|XTRA)");
+
     private final BillClaimRepository claims;
     private final RejectIdRepository rejectIds;
     private final LoyaltyConfigRepository configs;
@@ -85,7 +95,7 @@ public class PdfMatchService {
             boolean inPdf = matchedKey != null;
 
             if (inRejectList || !inPdf) {
-                String reason = inRejectList ? "In reject list" : "Not found in PDF Transaction ID";
+                String reason = inRejectList ? "In reject list" : "Not found in PDF Receipt/Transaction ID";
                 c.setStatus(ClaimStatus.REJECTED);
                 c.setRejectReason(reason);
                 c.setDecidedAt(Instant.now());
@@ -131,15 +141,17 @@ public class PdfMatchService {
     static String extractPdfText(byte[] bytes) throws Exception {
         try (PDDocument doc = Loader.loadPDF(bytes)) {
             PDFTextStripper stripper = new PDFTextStripper();
-            stripper.setSortByPosition(true);
+            // sortByPosition=true splits SiteOmat Transaction IDs across tokens
+            // (e.g. "300004636" → "Money 004636" + "300") and drops real txn matches.
+            stripper.setSortByPosition(false);
             return stripper.getText(doc);
         }
     }
 
     /**
-     * Parse Transaction ID values from SiteOmat Transaction Report text.
-     * SiteOmat splits the "Transaction ID" header across lines, so we locate IDs by
-     * row position (after PreAuth / on product continuation), not by column index.
+     * Parse Transaction ID (+ Receipt No) from SiteOmat Transaction Report text.
+     * Receipt No is included because OCR often stores it as FCC ID, and PDF column
+     * text can still scramble PreAuth/txn placement on some rows.
      */
     static Set<String> extractTransactionIds(String text) {
         Set<String> out = new LinkedHashSet<>();
@@ -148,6 +160,8 @@ public class PdfMatchService {
         addAll(out, TXN_AFTER_PREAUTH, text);
         addAll(out, TXN_ON_CONTINUATION, text);
         addAll(out, LABELED_TXN, text);
+        addAll(out, RECEIPT_AFTER_SER, text);
+        addAll(out, RECEIPT_BEFORE_PRODUCT, text);
 
         // Fallback: header still on one line (non-SiteOmat exports)
         if (out.isEmpty()) {

@@ -61,25 +61,43 @@ class PdfMatchServiceTest {
         assertTrue(ids.contains("300000158"), ids.toString());
         assertTrue(ids.contains("300000261"), ids.toString());
         assertTrue(ids.contains("300000265"), ids.toString());
-        // Receipt No that is not also Transaction ID should not be required — 300000260 is receipt for row 35
-        // (may or may not appear; we only assert Transaction IDs)
+        assertTrue(ids.contains("300000260"), "receipt no should match: " + ids);
         assertFalse(ids.contains("5071894"), "totalizer must not match");
     }
 
     @Test
-    void extractsFromRealSiteOmatPdfIfPresent() throws Exception {
-        Path pdf = Path.of(System.getProperty("user.home"), "Downloads", "SiteOmat - Transaction Report.pdf");
-        if (!Files.isRegularFile(pdf)) {
-            return; // optional local fixture
-        }
-        String text;
-        try (PDDocument doc = Loader.loadPDF(Files.readAllBytes(pdf))) {
-            PDFTextStripper stripper = new PDFTextStripper();
-            stripper.setSortByPosition(true);
-            text = stripper.getText(doc);
-        }
+    void extractsTxnFromMoneyContinuationAndReceiptNo() {
+        // Real extract (sortByPosition=false): txn 300004636 is on Money/(Rs.) continuation
+        String text = """
+                 255  300004636
+                High
+                Speed
+                Diesel
+                 500.00  5.010  99.79  Cash  27/08/26  09:54:25   7  5  20  PreAuth     300004635  500.00
+                 256  300004637
+                High
+                Speed
+                Diesel
+                 19501.96  195.430  99.79  Cash  27/08/26  09:56:09   7  6  21  PreAuth   Money
+                (Rs.)  25000.00  300004636  19501.96  27/08/26  09:51:05
+                """;
         Set<String> ids = PdfMatchService.extractTransactionIds(text);
-        assertTrue(ids.contains("300000261"), "missing 300000261 in " + ids);
-        assertTrue(ids.contains("300000265"), "missing 300000265 in " + ids);
+        assertTrue(ids.contains("300004636"), "txn/receipt: " + ids);
+        assertTrue(ids.contains("300004637"), "receipt: " + ids);
+    }
+
+    @Test
+    void extractsFromRealSiteOmatPdfIfPresent() throws Exception {
+        Path pdf = Path.of(System.getProperty("user.home"), "Downloads", "SiteOmat - Transaction Report (1).pdf");
+        if (!Files.isRegularFile(pdf)) {
+            pdf = Path.of(System.getProperty("user.home"), "Downloads", "SiteOmat - Transaction Report.pdf");
+        }
+        if (!Files.isRegularFile(pdf)) {
+            return;
+        }
+        String text = PdfMatchService.extractPdfText(Files.readAllBytes(pdf));
+        Set<String> ids = PdfMatchService.extractTransactionIds(text);
+        assertTrue(ids.contains("300004636"),
+                "300004636 must be parsed as txn/receipt; got " + ids.size() + " ids");
     }
 }
