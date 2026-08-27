@@ -24,7 +24,7 @@ services:
       DATABASE_USER: discount
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:-discount}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash-lite}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
       GOOGLE_VISION_API_KEY: ${GOOGLE_VISION_API_KEY:-}
       OCR_MODE: ${OCR_MODE:-auto}
       UPLOAD_DIR: /data/uploads

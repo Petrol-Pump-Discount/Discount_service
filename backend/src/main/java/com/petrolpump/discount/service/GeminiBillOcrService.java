@@ -51,7 +51,7 @@ public class GeminiBillOcrService {
 
     public GeminiBillOcrService(
             @Value("${app.gemini.api-key:}") String apiKey,
-            @Value("${app.gemini.model:gemini-2.5-flash-lite}") String model) {
+            @Value("${app.gemini.model:gemini-3.5-flash-lite}") String model) {
         this.mapper = new ObjectMapper();
         this.apiKey = apiKey == null ? "" : apiKey.trim();
         this.model = model;
