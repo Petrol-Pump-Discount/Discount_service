@@ -41,7 +41,9 @@ app:
     radius-meters: 50
   gemini:
     api-key: ${GEMINI_API_KEY:}
-    model: ${GEMINI_MODEL:gemini-flash-latest}
-  # auto = Gemini once then Tesseract on 429/fail; gemini|tesseract force one path
+    model: ${GEMINI_MODEL:gemini-3.5-flash-lite}
+  vision:
+    api-key: ${GOOGLE_VISION_API_KEY:}
+  # auto = Gemini → Vision → Tesseract; gemini|vision|tesseract force one path
   ocr:
     mode: ${OCR_MODE:auto}

@@ -38,4 +38,21 @@ class LocalReceiptOcrServiceTest {
         assertEquals("111222333", r.getFccId());
         assertEquals(5.0, r.getVolumeLitres(), 0.001);
     }
+
+    @Test
+    void parsesVolumeOnNextLineAndLitreSuffix() {
+        String text = """
+                FCC ID 555666777
+                Volume
+                8.250
+                Amount Rs. 800
+                """;
+        BillOcrResult r = LocalReceiptOcrService.parse(text);
+        assertEquals("555666777", r.getFccId());
+        assertEquals(8.25, r.getVolumeLitres(), 0.001);
+
+        BillOcrResult r2 = LocalReceiptOcrService.parse("Trns.ID 111222333\n12.450 Ltrs\n");
+        assertEquals("111222333", r2.getTransId());
+        assertEquals(12.45, r2.getVolumeLitres(), 0.001);
+    }
 }

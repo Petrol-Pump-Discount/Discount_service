@@ -42,7 +42,9 @@ app:
     radius-meters: ${PUMP_RADIUS_METERS:50}
   gemini:
     api-key: ${GEMINI_API_KEY}
-    model: ${GEMINI_MODEL:gemini-flash-latest}
+    model: ${GEMINI_MODEL:gemini-3.5-flash-lite}
+  vision:
+    api-key: ${GOOGLE_VISION_API_KEY:}
   ocr:
     mode: ${OCR_MODE:auto}
 server:
