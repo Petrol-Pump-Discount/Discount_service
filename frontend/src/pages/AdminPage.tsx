@@ -102,6 +102,11 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
   const [lat, setLat] = useState('13.7652412')
   const [lng, setLng] = useState('76.8516552')
   const [radius, setRadius] = useState('50')
+  const [stationName, setStationName] = useState('Nagashree Service Station')
+  const [stationAddress, setStationAddress] = useState('')
+  const [stationContact, setStationContact] = useState('Dhanush R')
+  const [stationPhone, setStationPhone] = useState('9558166221')
+  const [stationMaps, setStationMaps] = useState('https://maps.app.goo.gl/NWSYMhsgTPrDCrKs6')
   const [qrUrl, setQrUrl] = useState('')
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
@@ -153,6 +158,24 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
       setSummary(await api<Summary>('/api/admin/reports/summary'))
       setAlerts(await api<Alert[]>('/api/admin/alerts'))
       setStaff(await api<StaffUser[]>('/api/admin/users/staff'))
+      const pump = await api<{
+        lat: number
+        lng: number
+        radiusMeters: number
+        name: string
+        address: string
+        contactName: string
+        contactPhone: string
+        mapsUrl: string
+      }>('/api/admin/pump')
+      setLat(String(pump.lat))
+      setLng(String(pump.lng))
+      setRadius(String(pump.radiusMeters))
+      setStationName(pump.name || '')
+      setStationAddress(pump.address || '')
+      setStationContact(pump.contactName || '')
+      setStationPhone(pump.contactPhone || '')
+      setStationMaps(pump.mapsUrl || '')
       const qr = await api<{ url: string; token: string }>('/api/redeem/qr-link', { auth: false })
       setQrUrl(`${window.location.origin}/redeem?token=${qr.token}`)
       setErr('')
@@ -287,15 +310,20 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
       return
     }
     try {
-      await api('/api/admin/pump/geo', {
+      await api('/api/admin/pump', {
         method: 'PUT',
         body: JSON.stringify({
           lat: Number(lat),
           lng: Number(lng),
           radiusMeters: Number(radius),
+          name: stationName.trim(),
+          address: stationAddress.trim(),
+          contactName: stationContact.trim(),
+          contactPhone: stationPhone.trim(),
+          mapsUrl: stationMaps.trim(),
         }),
       })
-      setMsg('Geofence updated')
+      setMsg('Station / geofence saved (DB)')
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'Failed')
     }
@@ -746,11 +774,38 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
               </form>
             )}
             <Fold
-              title="Geofence"
+              title="Geofence & station"
               open={!!fold.geo}
               onToggle={() => setFold((f) => ({ ...f, geo: !f.geo }))}
             >
               <form className="stack" onSubmit={saveGeo} noValidate>
+                <TextInput
+                  label="Station name"
+                  value={stationName}
+                  onChange={(e) => setStationName(e.target.value.slice(0, 120))}
+                />
+                <TextInput
+                  label="Address"
+                  value={stationAddress}
+                  onChange={(e) => setStationAddress(e.target.value.slice(0, 400))}
+                />
+                <TextInput
+                  label="Contact name"
+                  value={stationContact}
+                  onChange={(e) => setStationContact(e.target.value.slice(0, 120))}
+                />
+                <TextInput
+                  label="Contact phone"
+                  inputMode="numeric"
+                  maxLength={10}
+                  value={stationPhone}
+                  onChange={(e) => setStationPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                />
+                <TextInput
+                  label="Maps URL"
+                  value={stationMaps}
+                  onChange={(e) => setStationMaps(e.target.value.slice(0, 400))}
+                />
                 <TextInput
                   label="Latitude"
                   inputMode="decimal"
@@ -780,7 +835,7 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
                   type="submit"
                   disabled={!!validateLat(lat) || !!validateLng(lng) || !!validateRadiusMeters(radius)}
                 >
-                  Update geofence
+                  Save station & geofence
                 </button>
               </form>
             </Fold>

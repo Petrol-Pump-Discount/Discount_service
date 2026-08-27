@@ -9,6 +9,7 @@ import {
   validatePhone,
   validateVehicle,
 } from '../lib/validate'
+import { compressImageBlob } from '../lib/compressImage'
 
 type UploadRes = {
   id: number
@@ -207,12 +208,13 @@ export function UploadPage({ role }: { role?: string }) {
     submitLockedRef.current = true
     setSubmitLocked(true)
     try {
+      const compressed = await compressImageBlob(blob)
       const fd = new FormData()
       if (guest) fd.append('phone', normalizePhone(phone))
       fd.append('vehicleNo', normalizeVehicle(vehicleNo))
       fd.append('lat', String(lat))
       fd.append('lng', String(lng))
-      fd.append('image', blob, 'bill.jpg')
+      fd.append('image', compressed, 'bill.jpg')
       const res = await api<UploadRes>('/api/claims/upload', {
         method: 'POST',
         body: fd,

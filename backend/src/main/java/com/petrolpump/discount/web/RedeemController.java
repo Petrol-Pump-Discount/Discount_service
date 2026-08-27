@@ -4,8 +4,11 @@ import com.petrolpump.discount.domain.RedeemTransaction;
 import com.petrolpump.discount.repo.PumpRepository;
 import com.petrolpump.discount.repo.RedeemTransactionRepository;
 import com.petrolpump.discount.service.AuthService;
+import com.petrolpump.discount.service.RateLimitService;
 import com.petrolpump.discount.service.RedeemService;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -17,10 +20,15 @@ public class RedeemController {
     private final RedeemService redeem;
     private final PumpRepository pumps;
     private final RedeemTransactionRepository redeems;
+    private final RateLimitService rateLimit;
 
     public RedeemController(AuthService auth, RedeemService redeem, PumpRepository pumps,
-                            RedeemTransactionRepository redeems) {
-        this.auth = auth; this.redeem = redeem; this.pumps = pumps; this.redeems = redeems;
+                            RedeemTransactionRepository redeems, RateLimitService rateLimit) {
+        this.auth = auth;
+        this.redeem = redeem;
+        this.pumps = pumps;
+        this.redeems = redeems;
+        this.rateLimit = rateLimit;
     }
 
     @GetMapping("/pump/{token}")
@@ -37,10 +45,25 @@ public class RedeemController {
                 .collect(Collectors.toList());
     }
 
+    @PostMapping("/otp/request")
+    public Map<String, String> requestPayOtp(@RequestHeader("X-Session-Token") String session) {
+        var user = auth.requireUser(session);
+        rateLimit.check("redeem-otp:" + user.getPhone(), 30);
+        auth.requestOtp(user.getPhone(), AuthService.PURPOSE_REDEEM);
+        return Map.of("status", "ok", "message", "OTP sent to " + user.getPhone());
+    }
+
     @PostMapping("/pay")
     public Map<String, Object> pay(@RequestHeader("X-Session-Token") String session,
                                    @RequestBody Map<String, Object> body) {
         var user = auth.requireUser(session);
+        rateLimit.check("redeem-pay:" + user.getId(), 5);
+        Object otpObj = body.get("otp");
+        if (otpObj == null || otpObj.toString().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "OTP required to complete payment");
+        }
+        auth.verifyActionOtp(user.getPhone(), otpObj.toString().trim(), AuthService.PURPOSE_REDEEM);
+
         String pumpToken = String.valueOf(body.get("pumpToken"));
         Long coins = body.get("coins") == null ? null : Long.valueOf(body.get("coins").toString());
         Double rupees = body.get("rupees") == null ? null : Double.valueOf(body.get("rupees").toString());

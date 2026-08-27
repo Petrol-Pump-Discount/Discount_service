@@ -5,17 +5,25 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class GeminiBillOcrService {
+    private static final Set<String> ALLOWED_MIME = Set.of(
+            "image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"
+    );
+
     private final RestClient restClient;
     private final ObjectMapper mapper;
     private final String apiKey;
@@ -27,7 +35,12 @@ public class GeminiBillOcrService {
         this.mapper = new ObjectMapper();
         this.apiKey = apiKey == null ? "" : apiKey.trim();
         this.model = model;
-        this.restClient = RestClient.create();
+        HttpClient http = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(http);
+        factory.setReadTimeout(Duration.ofSeconds(45));
+        this.restClient = RestClient.builder().requestFactory(factory).build();
     }
 
     public boolean isConfigured() {
@@ -40,8 +53,13 @@ public class GeminiBillOcrService {
                     "Gemini API key not configured. Set GEMINI_API_KEY / app.gemini.api-key");
         }
         try {
-            String mime = image.getContentType() == null ? "image/jpeg" : image.getContentType();
-            String b64 = Base64.getEncoder().encodeToString(image.getBytes());
+            String mime = image.getContentType() == null ? "image/jpeg" : image.getContentType().toLowerCase();
+            if (mime.contains(";")) mime = mime.substring(0, mime.indexOf(';')).trim();
+            if (!ALLOWED_MIME.contains(mime) && !mime.startsWith("image/")) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only image uploads allowed");
+            }
+            byte[] compressed = ImageCompressUtil.toJpegBytes(image.getBytes());
+            String b64 = Base64.getEncoder().encodeToString(compressed);
             String prompt = """
                     You are reading an Indian petrol pump thermal receipt photo (IndianOil / SiteOmat style).
                     Return ONLY compact JSON with keys:
@@ -60,7 +78,7 @@ public class GeminiBillOcrService {
                     "contents", List.of(Map.of(
                             "parts", List.of(
                                     Map.of("text", prompt),
-                                    Map.of("inline_data", Map.of("mime_type", mime, "data", b64))
+                                    Map.of("inline_data", Map.of("mime_type", "image/jpeg", "data", b64))
                             )
                     )),
                     "generationConfig", Map.of(

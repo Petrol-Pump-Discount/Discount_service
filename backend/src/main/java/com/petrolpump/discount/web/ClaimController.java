@@ -4,6 +4,7 @@ import com.petrolpump.discount.domain.BillClaim;
 import com.petrolpump.discount.repo.BillClaimRepository;
 import com.petrolpump.discount.service.AuthService;
 import com.petrolpump.discount.service.ClaimService;
+import com.petrolpump.discount.service.RateLimitService;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -17,11 +18,14 @@ public class ClaimController {
     private final ClaimService claims;
     private final AuthService auth;
     private final BillClaimRepository claimRepo;
+    private final RateLimitService rateLimit;
 
-    public ClaimController(ClaimService claims, AuthService auth, BillClaimRepository claimRepo) {
+    public ClaimController(ClaimService claims, AuthService auth, BillClaimRepository claimRepo,
+                           RateLimitService rateLimit) {
         this.claims = claims;
         this.auth = auth;
         this.claimRepo = claimRepo;
+        this.rateLimit = rateLimit;
     }
 
     @GetMapping("/mine")
@@ -41,6 +45,10 @@ public class ClaimController {
             @RequestParam double lat,
             @RequestParam double lng
     ) throws Exception {
+        String throttleKey = sessionToken != null && !sessionToken.isBlank()
+                ? "upload:" + sessionToken
+                : "upload:" + (phone == null ? "anon" : phone);
+        rateLimit.check(throttleKey, 8);
         var c = claims.upload(sessionToken, phone, vehicleNo, image, lat, lng);
         return Map.of(
                 "id", c.getId(),

@@ -122,12 +122,32 @@ public class AdminController {
     }
 
     @PutMapping("/pump/geo")
-    public Pump updateGeo(@RequestHeader("X-Session-Token") String token, @RequestBody Map<String, Double> body) {
+    public Pump updateGeo(@RequestHeader("X-Session-Token") String token, @RequestBody Map<String, Object> body) {
+        return updatePump(token, body);
+    }
+
+    @GetMapping("/pump")
+    public Pump getPump(@RequestHeader("X-Session-Token") String token) {
+        admin(token);
+        return pumps.findAll().get(0);
+    }
+
+    @PutMapping("/pump")
+    public Pump updatePump(@RequestHeader("X-Session-Token") String token, @RequestBody Map<String, Object> body) {
         admin(token);
         Pump p = pumps.findAll().get(0);
-        if (body.get("lat") != null) p.setLat(body.get("lat"));
-        if (body.get("lng") != null) p.setLng(body.get("lng"));
-        if (body.get("radiusMeters") != null) p.setRadiusMeters(body.get("radiusMeters"));
+        if (body.get("lat") != null) p.setLat(Double.parseDouble(body.get("lat").toString()));
+        if (body.get("lng") != null) p.setLng(Double.parseDouble(body.get("lng").toString()));
+        if (body.get("radiusMeters") != null) p.setRadiusMeters(Double.parseDouble(body.get("radiusMeters").toString()));
+        if (body.get("name") != null) p.setName(String.valueOf(body.get("name")).trim());
+        if (body.get("address") != null) p.setAddress(String.valueOf(body.get("address")).trim());
+        if (body.get("contactName") != null) p.setContactName(String.valueOf(body.get("contactName")).trim());
+        if (body.get("contactPhone") != null) {
+            String ph = String.valueOf(body.get("contactPhone")).replaceAll("\\D", "");
+            if (ph.length() > 10) ph = ph.substring(ph.length() - 10);
+            p.setContactPhone(ph);
+        }
+        if (body.get("mapsUrl") != null) p.setMapsUrl(String.valueOf(body.get("mapsUrl")).trim());
         return pumps.save(p);
     }
 
