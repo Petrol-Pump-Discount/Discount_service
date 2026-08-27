@@ -253,6 +253,9 @@ export function UploadPage({ role }: { role?: string }) {
             site behind Cloudflare HTTPS for full permissions.
           </p>
         )}
+        <h2 className="upload-guide">
+          Upload a clear image of your bill inside 100m radius of the pump
+        </h2>
         <form className="stack" onSubmit={submit} noValidate aria-busy={busy}>
           {guest ? (
             <TextInput
