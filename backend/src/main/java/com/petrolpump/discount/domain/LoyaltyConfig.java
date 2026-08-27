@@ -7,6 +7,7 @@ import jakarta.persistence.*;
 public class LoyaltyConfig {
     @Id
     private Long id = 1L;
+    private int rate0to100 = 10;
     private int rate100to200 = 20;
     private int rate200to300 = 40;
     private int rate300plus = 90;
@@ -18,6 +19,8 @@ public class LoyaltyConfig {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+    public int getRate0to100() { return rate0to100; }
+    public void setRate0to100(int v) { this.rate0to100 = v; }
     public int getRate100to200() { return rate100to200; }
     public void setRate100to200(int v) { this.rate100to200 = v; }
     public int getRate200to300() { return rate200to300; }

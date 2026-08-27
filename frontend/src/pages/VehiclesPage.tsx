@@ -101,23 +101,10 @@ export function VehiclesPage({ onRole }: { onRole?: (r: string) => void }) {
         onCancel={() => setRemoveId(null)}
         onConfirm={() => removeId != null && void remove(removeId)}
       />
-      <div className="card fade-in">
-        <h2>My vehicles</h2>
-        <p className="muted">Add the plate number printed on your fuel bill before uploading.</p>
-        <ul className="vehicle-list">
-          {vehicles.map((v) => (
-            <li key={v.id}>
-              <span>
-                <strong>{v.regNo}</strong> {v.fuelType && <span className="badge">{v.fuelType}</span>}
-              </span>
-              <button type="button" className="btn btn-danger" onClick={() => setRemoveId(v.id)}>
-                Remove
-              </button>
-            </li>
-          ))}
-        </ul>
-        {vehicles.length === 0 && <p className="muted">No vehicles yet.</p>}
 
+      <div className="card fade-in">
+        <h2>Add vehicle</h2>
+        <p className="muted">Add the plate number printed on your fuel bill before uploading.</p>
         <form className="stack" onSubmit={addVehicle} noValidate>
           <TextInput
             label="Vehicle number"
@@ -142,6 +129,23 @@ export function VehiclesPage({ onRole }: { onRole?: (r: string) => void }) {
         </form>
         {msg && <p className="ok">{msg}</p>}
         {err && <p className="err">{err}</p>}
+      </div>
+
+      <div className="card fade-in" style={{ marginTop: '0.85rem' }}>
+        <h2>My vehicles</h2>
+        <ul className="vehicle-list">
+          {vehicles.map((v) => (
+            <li key={v.id}>
+              <span>
+                <strong>{v.regNo}</strong> {v.fuelType && <span className="badge">{v.fuelType}</span>}
+              </span>
+              <button type="button" className="btn btn-danger" onClick={() => setRemoveId(v.id)}>
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+        {vehicles.length === 0 && <p className="muted">No vehicles yet.</p>}
       </div>
     </Shell>
   )

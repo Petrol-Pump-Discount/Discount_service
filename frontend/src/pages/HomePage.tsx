@@ -1,9 +1,10 @@
 import { Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { api, getToken } from '../api/client'
-import { Shell, StationFooter } from '../components/Shell'
+import { Shell } from '../components/Shell'
 
 type Rates = {
+  rate0to100: number
   rate100to200: number
   rate200to300: number
   rate300plus: number
@@ -14,30 +15,23 @@ type Rates = {
 }
 
 type Station = {
-  name: string
-  address: string
-  contactName: string
-  contactPhone: string
-  mapsUrl: string
   rates: Rates
 }
 
 function paiseLabel(p: number) {
   if (p >= 100) return `₹${(p / 100).toFixed(2)}/L`
-  return `${p} paise/L`
+  return `${p} paise/L (${p} coins/L)`
 }
 
 export function HomePage({ role }: { role?: string }) {
   const loggedIn = !!getToken()
-  const [station, setStation] = useState<Station | null>(null)
+  const [rates, setRates] = useState<Rates | null>(null)
 
   useEffect(() => {
     void api<Station>('/api/public/station', { auth: false })
-      .then(setStation)
+      .then((s) => setRates(s.rates))
       .catch(() => undefined)
   }, [])
-
-  const rates = station?.rates
 
   return (
     <Shell role={role}>
@@ -46,9 +40,11 @@ export function HomePage({ role }: { role?: string }) {
         <Link className="btn btn-primary" to="/upload">
           Upload bill
         </Link>
-        <Link className="btn btn-ghost" to={loggedIn ? '/account' : '/auth'}>
-          {loggedIn ? 'My wallet' : 'Sign in'}
-        </Link>
+        {!loggedIn && (
+          <Link className="btn btn-ghost" to="/auth">
+            Sign in
+          </Link>
+        )}
       </div>
 
       <div className="card home-explain fade-in">
@@ -64,15 +60,11 @@ export function HomePage({ role }: { role?: string }) {
           <li>
             Stand at the pump, open <strong>Upload bill</strong>, take a clear photo of the bill.
           </li>
-          <li>
-            After the pump matches your bill with the daily report, coins go to your <strong>wallet</strong>.
-          </li>
-          <li>
-            Scan the pump QR and pay with coins for fuel next time (OTP required).
-          </li>
+          <li>Coins will get credited to you after 24 hrs.</li>
+          <li>Scan the pump QR and pay with coins for fuel next time (OTP required).</li>
         </ol>
         <p className="muted" style={{ marginBottom: 0 }}>
-          Under 100 litres = no coins. 1 coin = 1 paisa. Coins can be used only at this pump.
+          1 coin = 1 paisa. Coins can be used only at this pump.
         </p>
       </div>
 
@@ -80,6 +72,10 @@ export function HomePage({ role }: { role?: string }) {
         <h2>Discount rates</h2>
         {rates ? (
           <ul className="rate-list">
+            <li>
+              <span>0–100 L</span>
+              <strong>{paiseLabel(rates.rate0to100 ?? 10)}</strong>
+            </li>
             <li>
               <span>100–200 L</span>
               <strong>{paiseLabel(rates.rate100to200)}</strong>
@@ -101,8 +97,6 @@ export function HomePage({ role }: { role?: string }) {
           <p className="muted">Loading rates…</p>
         )}
       </div>
-
-      <StationFooter station={station} />
     </Shell>
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { api, getToken } from '../api/client'
 import { Shell } from '../components/Shell'
 
@@ -63,14 +63,6 @@ export function AccountPage({ onRole }: { onRole?: (r: string) => void }) {
           <p className="stat-label">Total redeemed</p>
           <p className="stat-value">₹{(totalRedeemed / 100).toFixed(2)}</p>
           <p className="muted">{redeems.length} transactions</p>
-        </div>
-
-        <div className="card fade-in">
-          <h2>Vehicles</h2>
-          <p className="muted">Manage number plates in a separate section.</p>
-          <Link className="btn btn-primary" to="/vehicles">
-            Open vehicles
-          </Link>
         </div>
 
         <div className="card fade-in">

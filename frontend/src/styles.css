@@ -28,21 +28,29 @@ body {
   background-image:
     linear-gradient(
       160deg,
-      rgba(232, 238, 245, 0.72) 0%,
-      rgba(180, 200, 230, 0.35) 45%,
-      rgba(40, 70, 130, 0.45) 100%
+      rgba(232, 238, 245, 0.88) 0%,
+      rgba(200, 210, 235, 0.55) 42%,
+      rgba(120, 140, 190, 0.35) 100%
     ),
     url('/iras-rhino-bg.png');
-  background-size: cover;
-  background-position: left bottom;
-  background-attachment: fixed;
   background-repeat: no-repeat;
+  background-attachment: fixed;
+  /* phone: small art at bottom */
+  background-size: min(72vw, 280px) auto;
+  background-position: center bottom;
+}
+
+@media (min-width: 900px) {
+  body {
+    /* laptop: modest art on the left */
+    background-size: min(38vw, 420px) auto;
+    background-position: left 4% bottom 2%;
+  }
 }
 
 @media (max-width: 768px) {
   body {
     background-attachment: scroll;
-    background-position: 15% bottom;
   }
 }
 
@@ -56,6 +64,14 @@ button, input, select, textarea {
   margin: 0 auto;
   min-height: 100dvh;
   padding: 1.1rem 1rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+}
+.app-shell.has-fixed-bar {
+  padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+}
+.shell-body {
+  flex: 1 1 auto;
 }
 
 .wide-shell {
@@ -180,34 +196,40 @@ button, input, select, textarea {
 
 .iras-header {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.85rem;
+  text-align: center;
+  gap: 0.45rem;
   margin-bottom: 0.35rem;
-  padding: 0.65rem 0.75rem;
+  padding: 0.85rem 0.75rem 0.75rem;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 6px 18px rgba(26, 40, 80, 0.1);
 }
 .iras-logo {
   flex-shrink: 0;
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
   border-radius: 12px;
   background: #fff;
 }
-.iras-titles { min-width: 0; }
+.iras-titles {
+  min-width: 0;
+  width: 100%;
+  text-align: center;
+}
 .iras-title {
   font-family: Syne, "DM Sans", sans-serif;
   font-weight: 800;
   letter-spacing: -0.02em;
-  color: #1a2332;
-  font-size: clamp(1.15rem, 4.2vw, 1.55rem);
+  color: #1a4a8a;
+  font-size: clamp(1.2rem, 4.5vw, 1.65rem);
   margin: 0;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 .iras-sub {
-  margin: 0.15rem 0 0;
+  margin: 0.2rem 0 0;
   color: #5a6b7d;
   font-size: 0.82rem;
   font-weight: 600;
@@ -588,6 +610,49 @@ select[aria-invalid="true"] {
 }
 .site-footer p { margin: 0.35rem 0 0; opacity: 0.92; }
 .footer-link { color: #0a4a9e; text-decoration: underline; }
+
+.fixed-station-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  padding: 0.55rem 0.75rem calc(0.55rem + env(safe-area-inset-bottom, 0px));
+  background: rgba(255, 255, 255, 0.96);
+  border-top: 1px solid rgba(26, 40, 80, 0.12);
+  box-shadow: 0 -8px 24px rgba(26, 40, 80, 0.1);
+  backdrop-filter: blur(8px);
+}
+.fixed-station-inner {
+  max-width: 480px;
+  margin: 0 auto;
+  display: grid;
+  gap: 0.35rem;
+}
+.wide-shell .fixed-station-inner {
+  max-width: 960px;
+}
+.foot-chip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  color: #0a3d6b;
+  text-decoration: none;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  font-weight: 600;
+}
+.foot-chip:hover { color: var(--accent); }
+.foot-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+  color: #F15A29;
+}
+.foot-chip-text {
+  min-width: 0;
+}
 
 .simple-steps {
   margin: 0.4rem 0 0.75rem;
