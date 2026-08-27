@@ -48,7 +48,7 @@ public class ClaimController {
         String throttleKey = sessionToken != null && !sessionToken.isBlank()
                 ? "upload:" + sessionToken
                 : "upload:" + (phone == null ? "anon" : phone);
-        rateLimit.check(throttleKey, 8);
+        rateLimit.check(throttleKey, 2);
         var c = claims.upload(sessionToken, phone, vehicleNo, image, lat, lng);
         return Map.of(
                 "id", c.getId(),

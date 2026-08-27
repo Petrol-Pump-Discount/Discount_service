@@ -18,16 +18,31 @@ export class ApiError extends Error {
 }
 
 async function parseError(res: Response): Promise<never> {
-  let msg = res.statusText || 'Request failed'
+  let msg = 'Something went wrong. Please try again.'
   try {
     const j = await res.json()
-    msg = j.message || j.error || msg
+    if (typeof j.message === 'string' && j.message.trim()) msg = j.message
+    else if (typeof j.error === 'string' && j.error.trim()) msg = j.error
   } catch {
-    try {
-      msg = (await res.text()) || msg
-    } catch {
-      /* ignore */
+    if (res.status === 413) msg = 'Photo is too large. Take a smaller photo and try again.'
+    else if (res.status === 429) msg = 'Too many requests. Wait a few seconds and try again.'
+    else if (res.status === 502 || res.status === 503 || res.status === 504) {
+      msg = 'Server is busy reading bills. Wait a few seconds and try again.'
+    } else if (res.status >= 500) {
+      msg = 'Something went wrong. Please try again.'
     }
+  }
+  // Never surface raw SQL / stack traces if a proxy leaked HTML/text
+  const lower = msg.toLowerCase()
+  if (
+    lower.includes('sql') ||
+    lower.includes('constraint') ||
+    lower.includes('hibernate') ||
+    lower.includes('duplicate key') ||
+    lower.includes('<html') ||
+    msg.length > 200
+  ) {
+    msg = 'Something went wrong. Please try again.'
   }
   throw new ApiError(res.status, msg)
 }
@@ -48,7 +63,7 @@ export async function api<T = unknown>(
   try {
     res = await fetch(path, { ...opts, headers })
   } catch {
-    throw new ApiError(0, 'Network error — check connection / try again (www and non-www both supported after update)')
+    throw new ApiError(0, 'Network error — check your connection and try again.')
   }
   if (!res.ok) await parseError(res)
   if (res.status === 204) return undefined as T
