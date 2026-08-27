@@ -25,6 +25,7 @@ services:
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:-discount}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-latest}
+      OCR_MODE: ${OCR_MODE:-auto}
       UPLOAD_DIR: /data/uploads
       OTP_PROVIDER: ${OTP_PROVIDER:-console}
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
