@@ -9,6 +9,7 @@ import { EmployeePage } from './pages/EmployeePage'
 import { HomePage } from './pages/HomePage'
 import { RedeemPage } from './pages/RedeemPage'
 import { UploadPage } from './pages/UploadPage'
+import { VehiclesPage } from './pages/VehiclesPage'
 
 export default function App() {
   const [role, setRole] = useState<string>()
@@ -26,6 +27,7 @@ export default function App() {
         <Route path="/" element={<HomePage role={role} />} />
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/account" element={<AccountPage onRole={setRole} />} />
+        <Route path="/vehicles" element={<VehiclesPage onRole={setRole} />} />
         <Route path="/claims" element={<ClaimsPage onRole={setRole} />} />
         <Route path="/upload" element={<UploadPage role={role} />} />
         <Route path="/redeem" element={<RedeemPage onRole={setRole} />} />

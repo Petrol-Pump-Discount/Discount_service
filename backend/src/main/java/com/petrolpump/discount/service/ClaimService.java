@@ -66,6 +66,15 @@ public class ClaimService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Phone not eligible to claim");
         }
 
+        String ctype = image.getContentType() == null ? "" : image.getContentType().toLowerCase();
+        if (ctype.contains(";")) ctype = ctype.substring(0, ctype.indexOf(';')).trim();
+        if (!ctype.isBlank() && !ctype.startsWith("image/")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only image uploads allowed");
+        }
+        if (image.getSize() > 12L * 1024 * 1024) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Image too large (max 12MB)");
+        }
+
         String normVeh = VehicleNormalizer.normalize(vehicleNo);
         if (!vehicles.existsByUserAndRegNo(user, normVeh)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vehicle not linked to this account");

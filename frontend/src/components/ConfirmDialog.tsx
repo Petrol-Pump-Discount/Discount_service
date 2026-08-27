@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 type Props = {
   open: boolean
   title: string
@@ -6,6 +8,7 @@ type Props = {
   cancelLabel?: string
   danger?: boolean
   busy?: boolean
+  children?: ReactNode
   onConfirm: () => void
   onCancel: () => void
 }
@@ -18,6 +21,7 @@ export function ConfirmDialog({
   cancelLabel = 'No',
   danger,
   busy,
+  children,
   onConfirm,
   onCancel,
 }: Props) {
@@ -33,6 +37,7 @@ export function ConfirmDialog({
       >
         <h3 id="confirm-title">{title}</h3>
         <p className="muted">{message}</p>
+        {children && <div className="stack" style={{ marginTop: 10 }}>{children}</div>}
         <div className="row" style={{ justifyContent: 'flex-end', marginTop: 12 }}>
           <button type="button" className="btn btn-dark" disabled={busy} onClick={onCancel}>
             {cancelLabel}

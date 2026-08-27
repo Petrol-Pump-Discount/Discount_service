@@ -27,6 +27,9 @@ public class AuthService {
     private final Map<String, PendingOtp> pending = new ConcurrentHashMap<>();
     private final Map<String, Instant> lastRequest = new ConcurrentHashMap<>();
 
+    public static final String PURPOSE_LOGIN = "LOGIN";
+    public static final String PURPOSE_REDEEM = "REDEEM";
+
     public AuthService(AppUserRepository users, UserSessionRepository sessions, OtpSender otpSender,
                        @Value("${app.otp.ttl-seconds:300}") int otpTtlSeconds,
                        @Value("${app.otp.max-attempts:5}") int otpMaxAttempts) {
@@ -38,24 +41,30 @@ public class AuthService {
     }
 
     public void requestOtp(String phone) {
+        requestOtp(phone, PURPOSE_LOGIN);
+    }
+
+    public void requestOtp(String phone, String purpose) {
         phone = normalizePhone(phone);
+        purpose = normalizePurpose(purpose);
+        String key = otpKey(phone, purpose);
         Instant now = Instant.now();
-        Instant prev = lastRequest.get(phone);
+        Instant prev = lastRequest.get(key);
         if (prev != null && prev.plusSeconds(30).isAfter(now)) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Wait 30 seconds before requesting another OTP");
         }
-        lastRequest.put(phone, now);
+        lastRequest.put(key, now);
 
         String code = String.format("%06d", random.nextInt(1_000_000));
         if (!otpSender.providerVerifies()) {
-            pending.put(phone, new PendingOtp(code, now.plusSeconds(otpTtlSeconds), 0));
+            pending.put(key, new PendingOtp(code, now.plusSeconds(otpTtlSeconds), 0));
         } else {
-            pending.remove(phone);
+            pending.remove(key);
         }
         try {
             otpSender.send(phone, code);
         } catch (Exception ex) {
-            pending.remove(phone);
+            pending.remove(key);
             org.slf4j.LoggerFactory.getLogger(AuthService.class)
                     .error("OTP send failed for {}: {}", phone, ex.toString());
             String reason = ex.getMessage() == null ? "Failed to send OTP" : ex.getMessage();
@@ -64,13 +73,14 @@ public class AuthService {
         }
     }
 
-    @Transactional
-    public String verifyOtp(String phone, String otp, String name, UserRole roleIfNew) {
+    /** Verify OTP for a non-login action (e.g. redeem). Does not create a session. */
+    public void verifyActionOtp(String phone, String otp, String purpose) {
         phone = normalizePhone(phone);
+        purpose = normalizePurpose(purpose);
         if (otp == null || !otp.matches("\\d{6}")) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid OTP");
         }
-
+        String key = otpKey(phone, purpose);
         boolean ok;
         if (otpSender.providerVerifies()) {
             try {
@@ -79,23 +89,28 @@ public class AuthService {
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid OTP");
             }
         } else {
-            PendingOtp p = pending.get(phone);
+            PendingOtp p = pending.get(key);
             if (p == null || p.expiresAt.isBefore(Instant.now())) {
-                pending.remove(phone);
+                pending.remove(key);
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "OTP expired — request a new one");
             }
             if (p.attempts >= otpMaxAttempts) {
-                pending.remove(phone);
+                pending.remove(key);
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Too many attempts — request a new OTP");
             }
             p.attempts++;
             ok = p.code.equals(otp);
-            if (ok) pending.remove(phone);
+            if (ok) pending.remove(key);
         }
         if (!ok) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid OTP");
         }
+    }
 
+    @Transactional
+    public String verifyOtp(String phone, String otp, String name, UserRole roleIfNew) {
+        phone = normalizePhone(phone);
+        verifyActionOtp(phone, otp, PURPOSE_LOGIN);
         final String phoneFinal = phone;
         final String nameFinal = name;
         final UserRole roleFinal = roleIfNew == null ? UserRole.DRIVER : roleIfNew;
@@ -142,6 +157,17 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid phone");
         }
         return digits;
+    }
+
+    private static String normalizePurpose(String purpose) {
+        if (purpose == null || purpose.isBlank()) return PURPOSE_LOGIN;
+        String p = purpose.trim().toUpperCase();
+        if (PURPOSE_LOGIN.equals(p) || PURPOSE_REDEEM.equals(p)) return p;
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid OTP purpose");
+    }
+
+    private static String otpKey(String phone, String purpose) {
+        return phone + ":" + purpose;
     }
 
     private static final class PendingOtp {
