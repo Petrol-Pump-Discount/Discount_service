@@ -87,6 +87,7 @@ export function StationFooter({
   )
 }
 
+/** IRAS-style header: IndianOil logo + station title (replaces IRAS portal title). */
 export function Shell({
   children,
   wide,
@@ -101,11 +102,11 @@ export function Shell({
   usePressFeedback()
   return (
     <div className={`app-shell${wide ? ' wide-shell' : ''} page-enter`}>
-      <header className="brand-bar">
-        <img className="brand-mark" src="/indianoil-logo.jpg" width={52} height={52} alt="IndianOil" />
-        <div>
-          <p className="eyebrow">IndianOil · Nagashree</p>
-          <h1 className="brand">{title || 'Pump Loyalty'}</h1>
+      <header className="iras-header">
+        <img className="iras-logo" src="/indianoil-logo.jpg" width={56} height={56} alt="IndianOil" />
+        <div className="iras-titles">
+          <h1 className="iras-title">Nagashree Service Station</h1>
+          {title ? <p className="iras-sub">{title}</p> : <p className="iras-sub">Pump Loyalty</p>}
         </div>
       </header>
       <TopNav role={role} />

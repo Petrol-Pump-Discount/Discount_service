@@ -216,7 +216,7 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
     setErr('')
     try {
       setCfg(await api<Config>('/api/admin/config', { method: 'PUT', body: JSON.stringify(cfg) }))
-      setMsg('Rates saved')
+      setMsg('Rates saved — apply immediately (no restart)')
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'Failed')
     }
@@ -323,7 +323,7 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
           mapsUrl: stationMaps.trim(),
         }),
       })
-      setMsg('Station / geofence saved (DB)')
+      setMsg('Station / geofence saved — apply on next upload (no restart)')
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'Failed')
     }

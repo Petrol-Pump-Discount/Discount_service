@@ -1,17 +1,17 @@
 :root {
-  --bg0: #041428;
+  --bg0: #e8eef5;
   --bg1: #0a3d6b;
-  --bg2: #0e7c8a;
-  --accent: #FF671F;
-  --accent-deep: #e05510;
-  --cream: #F4FBFF;
-  --ink: #0b1f33;
+  --bg2: #1a4a8a;
+  --accent: #F15A29;
+  --accent-deep: #d9481a;
+  --cream: #ffffff;
+  --ink: #1a2332;
   --muted: #5a6b7d;
-  --card: rgba(244, 251, 255, 0.94);
+  --card: rgba(255, 255, 255, 0.94);
   --danger: #b91c1c;
   --ok: #15803d;
   --radius: 18px;
-  --shadow: 0 18px 40px rgba(4, 20, 40, 0.45);
+  --shadow: 0 12px 32px rgba(26, 40, 80, 0.18);
   font-family: "DM Sans", system-ui, sans-serif;
   color: var(--ink);
   background: var(--bg0);
@@ -24,17 +24,17 @@
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; margin: 0; }
 body {
-  background-color: #041428;
+  background-color: #dbe4f0;
   background-image:
     linear-gradient(
-      180deg,
-      rgba(4, 20, 40, 0.55) 0%,
-      rgba(10, 61, 107, 0.45) 40%,
-      rgba(14, 124, 138, 0.55) 100%
+      160deg,
+      rgba(232, 238, 245, 0.72) 0%,
+      rgba(180, 200, 230, 0.35) 45%,
+      rgba(40, 70, 130, 0.45) 100%
     ),
     url('/iras-rhino-bg.png');
   background-size: cover;
-  background-position: center bottom;
+  background-position: left bottom;
   background-attachment: fixed;
   background-repeat: no-repeat;
 }
@@ -42,6 +42,7 @@ body {
 @media (max-width: 768px) {
   body {
     background-attachment: scroll;
+    background-position: 15% bottom;
   }
 }
 
@@ -177,6 +178,41 @@ button, input, select, textarea {
   margin-bottom: 0.15rem;
 }
 
+.iras-header {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 0.35rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 6px 18px rgba(26, 40, 80, 0.1);
+}
+.iras-logo {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #fff;
+}
+.iras-titles { min-width: 0; }
+.iras-title {
+  font-family: Syne, "DM Sans", sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #1a2332;
+  font-size: clamp(1.15rem, 4.2vw, 1.55rem);
+  margin: 0;
+  line-height: 1.2;
+}
+.iras-sub {
+  margin: 0.15rem 0 0;
+  color: #5a6b7d;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
 .brand-mark {
   flex-shrink: 0;
   width: 52px;
@@ -208,9 +244,10 @@ button, input, select, textarea {
 
 
 .lead {
-  color: rgba(245, 247, 250, 0.88);
+  color: rgba(26, 35, 50, 0.88);
   margin: 0.4rem 0 0;
   font-size: 1.02rem;
+  font-weight: 600;
 }
 
 .card {
@@ -343,13 +380,13 @@ select[aria-invalid="true"] {
 .btn-primary:hover:not(:disabled):not(.btn-busy) { filter: brightness(1.04); }
 
 .btn-ghost {
-  background: transparent;
-  color: var(--cream);
-  border: 1.5px solid rgba(247, 241, 227, 0.35);
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--bg1);
+  border: 1.5px solid rgba(10, 61, 107, 0.25);
 }
 .btn-dark {
   background: var(--bg1);
-  color: var(--cream);
+  color: #fff;
 }
 .btn-dark:active:not(:disabled) {
   filter: brightness(1.15);
@@ -432,8 +469,8 @@ select[aria-invalid="true"] {
   margin: 0.85rem 0 0.2rem;
 }
 .nav a, .nav button {
-  background: rgba(247, 241, 227, 0.12);
-  color: var(--cream);
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--bg1);
   border: 0;
   border-radius: 999px;
   padding: 0.45rem 0.85rem;
@@ -443,16 +480,17 @@ select[aria-invalid="true"] {
   transition: transform 0.12s ease, background 0.12s ease, filter 0.12s ease;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+  box-shadow: 0 2px 8px rgba(26, 40, 80, 0.08);
 }
 .nav a:active, .nav button:active,
 .nav a.is-pressed, .nav button.is-pressed {
   transform: scale(0.88);
-  filter: brightness(1.35);
+  filter: brightness(1.05);
   box-shadow: inset 0 0 0 2px var(--accent);
 }
 .nav a.active {
   background: var(--accent);
-  color: #1a1200;
+  color: #fff;
 }
 
 .muted { color: var(--muted); font-size: 0.92rem; }
@@ -542,14 +580,14 @@ select[aria-invalid="true"] {
   margin-top: 1.75rem;
   padding: 1rem 1.1rem;
   border-radius: 16px;
-  background: rgba(4, 20, 40, 0.55);
-  color: var(--cream);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
   font-size: 0.88rem;
   line-height: 1.45;
-  backdrop-filter: blur(6px);
+  box-shadow: 0 6px 18px rgba(26, 40, 80, 0.1);
 }
 .site-footer p { margin: 0.35rem 0 0; opacity: 0.92; }
-.footer-link { color: #9fe7ff; text-decoration: underline; }
+.footer-link { color: #0a4a9e; text-decoration: underline; }
 
 .simple-steps {
   margin: 0.4rem 0 0.75rem;

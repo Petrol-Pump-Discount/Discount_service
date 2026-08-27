@@ -81,6 +81,7 @@ public class ClaimService {
         }
         Pump pump = pumps.findAll().stream().findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Pump not configured"));
+        // Always read lat/lng/radius from DB so Admin geo edits apply without restart.
 
         if (lat == null || lng == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Location required");
