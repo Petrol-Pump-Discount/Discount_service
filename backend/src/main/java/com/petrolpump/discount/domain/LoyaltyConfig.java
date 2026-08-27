@@ -7,6 +7,7 @@ import jakarta.persistence.*;
 public class LoyaltyConfig {
     @Id
     private Long id = 1L;
+    @Column(nullable = false, columnDefinition = "integer default 10")
     private int rate0to100 = 10;
     private int rate100to200 = 20;
     private int rate200to300 = 40;
