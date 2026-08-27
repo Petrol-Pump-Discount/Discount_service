@@ -21,13 +21,17 @@ public class LocalReceiptOcrService {
     private static final Logger log = LoggerFactory.getLogger(LocalReceiptOcrService.class);
 
     private static final Pattern FCC = Pattern.compile(
-            "(?i)(?:FCC\\s*ID|FCCID|F\\s*C\\s*C\\s*I\\s*D)\\s*[:.\\-]?\\s*([0-9]{6,12})");
+            "(?i)(?:FCC\\s*I[D1]|FCCID|F\\s*C\\s*C\\s*I\\s*[D1])\\s*[:.\\-]?\\s*([0-9]{6,12})");
     private static final Pattern TRANS = Pattern.compile(
-            "(?i)(?:Trns\\.?\\s*ID|Trans(?:action)?\\s*ID|Txn\\s*ID)\\s*[:.\\-]?\\s*([0-9]{6,12})");
+            "(?i)(?:Trns\\.?\\s*I[D1]|Trans(?:action)?\\s*I[D1]|Txn\\s*I[D1])\\s*[:.\\-]?\\s*([0-9]{6,12})");
     private static final Pattern BILL = Pattern.compile(
             "(?i)(?:Bill\\s*No\\.?|Receipt\\s*No\\.?|Bill\\s*#)\\s*[:.\\-]?\\s*([A-Z0-9\\-]{3,20})");
     private static final Pattern VOLUME = Pattern.compile(
-            "(?i)(?:Volume|Vol(?:ume)?\\s*\\(?L(?:tr)?s?\\)?|Sale\\s*Vol)\\s*[:.\\-]?\\s*([0-9]+(?:\\.[0-9]+)?)");
+            "(?i)(?:Volume|Vo[l1](?:ume)?\\s*\\(?L(?:tr)?s?\\)?|Sale\\s*Vol)\\s*[:.\\-]?\\s*([0-9]+(?:\\.[0-9]+)?)");
+    private static final Pattern VOLUME_LITRE = Pattern.compile(
+            "(?i)\\b([0-9]+\\.[0-9]{2,3})\\s*(?:L|Ltr|Ltrs?|Litres?)\\b");
+    private static final Pattern VOLUME_NEXT_LINE = Pattern.compile(
+            "(?i)(?:Volume|Vol)\\s*[:.\\-]?\\s*(?:\\n|\\r\\n?)\\s*([0-9]+(?:\\.[0-9]+)?)");
     private static final Pattern AMOUNT = Pattern.compile(
             "(?i)(?:Amount|Sale\\s*Amt|Net\\s*Amount|Rs\\.?)\\s*[:.\\-]?\\s*([0-9]+(?:\\.[0-9]+)?)");
     private static final Pattern VEHICLE = Pattern.compile(
@@ -85,6 +89,22 @@ public class LocalReceiptOcrService {
             try {
                 out.setVolumeLitres(Double.parseDouble(m.group(1)));
             } catch (NumberFormatException ignored) { /* skip */ }
+        }
+        if (out.getVolumeLitres() == null) {
+            m = VOLUME_NEXT_LINE.matcher(norm);
+            if (m.find()) {
+                try {
+                    out.setVolumeLitres(Double.parseDouble(m.group(1)));
+                } catch (NumberFormatException ignored) { /* skip */ }
+            }
+        }
+        if (out.getVolumeLitres() == null) {
+            m = VOLUME_LITRE.matcher(norm);
+            if (m.find()) {
+                try {
+                    out.setVolumeLitres(Double.parseDouble(m.group(1)));
+                } catch (NumberFormatException ignored) { /* skip */ }
+            }
         }
         m = AMOUNT.matcher(norm);
         if (m.find()) {

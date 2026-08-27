@@ -24,10 +24,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Gemini OCR. Free-tier keys often return 429 even for a single call when daily/RPM
- * quota is exhausted — callers should fall back to local OCR.
+ * Gemini OCR (paid tier recommended). Free-tier keys return 429 when quota is gone.
+ * After quota 429 we open a circuit so uploads skip straight to Vision/local.
  */
 @Service
 public class GeminiBillOcrService {
@@ -35,8 +36,10 @@ public class GeminiBillOcrService {
     private static final Set<String> ALLOWED_MIME = Set.of(
             "image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"
     );
-    private static final int MAX_IN_FLIGHT = 4;
+    private static final int MAX_IN_FLIGHT = 5;
     private static final int MAX_ATTEMPTS = 2;
+    /** Skip Gemini for this long after billing/quota 429. */
+    private static final long CIRCUIT_OPEN_MS = 15 * 60 * 1000L;
 
     private final RestClient restClient;
     private final ObjectMapper mapper;
@@ -44,10 +47,11 @@ public class GeminiBillOcrService {
     private final String model;
     private final Semaphore slots = new Semaphore(MAX_IN_FLIGHT, true);
     private final ExecutorService httpExecutor = Executors.newFixedThreadPool(MAX_IN_FLIGHT + 2);
+    private final AtomicLong circuitOpenUntil = new AtomicLong(0);
 
     public GeminiBillOcrService(
             @Value("${app.gemini.api-key:}") String apiKey,
-            @Value("${app.gemini.model:gemini-2.0-flash}") String model) {
+            @Value("${app.gemini.model:gemini-2.5-flash-lite}") String model) {
         this.mapper = new ObjectMapper();
         this.apiKey = apiKey == null ? "" : apiKey.trim();
         this.model = model;
@@ -56,12 +60,29 @@ public class GeminiBillOcrService {
                 .executor(httpExecutor)
                 .build();
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(http);
-        factory.setReadTimeout(Duration.ofSeconds(40));
+        factory.setReadTimeout(Duration.ofSeconds(35));
         this.restClient = RestClient.builder().requestFactory(factory).build();
     }
 
     public boolean isConfigured() {
         return !apiKey.isBlank();
+    }
+
+    public boolean isCircuitOpen() {
+        return System.currentTimeMillis() < circuitOpenUntil.get();
+    }
+
+    public void openCircuit(String reason) {
+        long until = System.currentTimeMillis() + CIRCUIT_OPEN_MS;
+        circuitOpenUntil.set(until);
+        log.warn("Gemini circuit OPEN for {}min reason={}", CIRCUIT_OPEN_MS / 60000, reason);
+    }
+
+    private void closeCircuitOnSuccess() {
+        if (circuitOpenUntil.get() != 0) {
+            circuitOpenUntil.set(0);
+            log.info("Gemini circuit CLOSED — requests succeeding again");
+        }
     }
 
     /** Multipart entry (gemini-only mode). */
@@ -87,13 +108,20 @@ public class GeminiBillOcrService {
 
     /** Single Gemini call — used by auto-fallback so we don't burn time on 429 retries. */
     public BillOcrResult extractBytesOnce(byte[] jpegBytes) {
+        if (isCircuitOpen()) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Gemini circuit open");
+        }
         return withSlot(() -> {
             try {
-                return callOnce(jpegBytes);
+                BillOcrResult r = callOnce(jpegBytes);
+                closeCircuitOnSuccess();
+                return r;
             } catch (RestClientResponseException ex) {
                 int code = ex.getStatusCode().value();
-                log.warn("Gemini HTTP {} bodySnippet={}", code, snippet(ex.getResponseBodyAsString()));
+                String body = ex.getResponseBodyAsString();
+                log.warn("Gemini HTTP {} bodySnippet={}", code, snippet(body));
                 if (code == 429) {
+                    openCircuit("HTTP 429");
                     throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Gemini quota exceeded");
                 }
                 throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini OCR failed");
@@ -110,9 +138,12 @@ public class GeminiBillOcrService {
         if (!isConfigured()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Gemini not configured");
         }
+        if (isCircuitOpen()) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Gemini circuit open");
+        }
         boolean acquired;
         try {
-            acquired = slots.tryAcquire(20, TimeUnit.SECONDS);
+            acquired = slots.tryAcquire(12, TimeUnit.SECONDS);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Upload interrupted");
@@ -140,14 +171,16 @@ public class GeminiBillOcrService {
         Exception last = null;
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
-                return callOnce(jpegBytes);
+                BillOcrResult r = callOnce(jpegBytes);
+                closeCircuitOnSuccess();
+                return r;
             } catch (RestClientResponseException ex) {
                 last = ex;
                 int code = ex.getStatusCode().value();
                 log.warn("Gemini HTTP {} attempt {}/{} snippet={}", code, attempt, MAX_ATTEMPTS,
                         snippet(ex.getResponseBodyAsString()));
                 if (code == 429) {
-                    // Fail fast — quota won't recover in milliseconds; let local OCR take over.
+                    openCircuit("HTTP 429");
                     throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Gemini quota exceeded");
                 }
                 if (attempt == MAX_ATTEMPTS || (code != 500 && code != 503)) {
