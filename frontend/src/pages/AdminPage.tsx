@@ -41,6 +41,7 @@ type Claim = {
   coinsCredited: number
   rejectReason?: string
   createdAt: string
+  hasPhoto?: boolean
 }
 
 type Alert = { id: number; message: string; createdAt: string; type?: string }
@@ -114,6 +115,8 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
   const [pdfBusy, setPdfBusy] = useState(false)
   const [statusFilter, setStatusFilter] = useState('QUEUED')
   const [claimsBusy, setClaimsBusy] = useState(false)
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null)
+  const [photoBusyId, setPhotoBusyId] = useState<number | null>(null)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const [ratesOpen, setRatesOpen] = useState(false)
   const [fold, setFold] = useState<Record<string, boolean>>({
@@ -415,6 +418,39 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
     }
   }
 
+  async function viewClaimPhoto(claimId: number) {
+    setErr('')
+    setPhotoBusyId(claimId)
+    try {
+      const token = getToken()
+      const res = await fetch(`/api/admin/claims/${claimId}/photo`, {
+        headers: token ? { 'X-Session-Token': token } : {},
+      })
+      if (!res.ok) {
+        let msg = 'Could not load bill photo'
+        try {
+          const j = (await res.json()) as { message?: string }
+          if (j.message) msg = j.message
+        } catch {
+          /* ignore */
+        }
+        throw new Error(msg)
+      }
+      const blob = await res.blob()
+      if (photoUrl) URL.revokeObjectURL(photoUrl)
+      setPhotoUrl(URL.createObjectURL(blob))
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'Could not load bill photo')
+    } finally {
+      setPhotoBusyId(null)
+    }
+  }
+
+  function closePhoto() {
+    if (photoUrl) URL.revokeObjectURL(photoUrl)
+    setPhotoUrl(null)
+  }
+
   function numField(key: keyof Config, label: string) {
     if (!cfg) return null
     return (
@@ -705,6 +741,7 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
                     <th>L</th>
                     <th>Status</th>
                     <th>Coins</th>
+                    <th>Photo</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -725,6 +762,21 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
                         </span>
                       </td>
                       <td>{c.coinsCredited}</td>
+                      <td>
+                        {c.hasPhoto ? (
+                          <button
+                            type="button"
+                            className="btn btn-dark"
+                            style={{ padding: '0.25rem 0.55rem', fontSize: '0.8rem' }}
+                            disabled={photoBusyId === c.id}
+                            onClick={() => void viewClaimPhoto(c.id)}
+                          >
+                            {photoBusyId === c.id ? '…' : 'View'}
+                          </button>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -733,6 +785,21 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
             </div>
           )}
         </div>
+
+        {photoUrl && (
+          <div className="photo-lightbox" role="dialog" aria-modal="true" aria-label="Bill photo">
+            <button type="button" className="photo-lightbox-backdrop" onClick={closePhoto} aria-label="Close" />
+            <div className="photo-lightbox-panel">
+              <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+                <strong>Bill photo</strong>
+                <button type="button" className="btn btn-dark" onClick={closePhoto}>
+                  Close
+                </button>
+              </div>
+              <img src={photoUrl} alt="Uploaded bill" />
+            </div>
+          </div>
+        )}
 
         <div className="card span-2">
           <Fold title="6. Rates & geofence" open={ratesOpen} onToggle={() => setRatesOpen((o) => !o)}>
