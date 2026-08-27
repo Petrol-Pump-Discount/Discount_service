@@ -5,6 +5,8 @@ import com.petrolpump.discount.repo.BillClaimRepository;
 import com.petrolpump.discount.service.AuthService;
 import com.petrolpump.discount.service.ClaimService;
 import com.petrolpump.discount.service.RateLimitService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -15,6 +17,8 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/claims")
 public class ClaimController {
+    private static final Logger log = LoggerFactory.getLogger(ClaimController.class);
+
     private final ClaimService claims;
     private final AuthService auth;
     private final BillClaimRepository claimRepo;
@@ -45,18 +49,31 @@ public class ClaimController {
             @RequestParam double lat,
             @RequestParam double lng
     ) throws Exception {
+        // Log immediately so VPS logs show the hit even if later steps fail / throttle.
+        long bytes = image == null ? 0 : image.getSize();
+        log.info("UPLOAD hit vehicle={} bytes={} lat={} lng={} authed={}",
+                vehicleNo, bytes, lat, lng, sessionToken != null && !sessionToken.isBlank());
+
         String throttleKey = sessionToken != null && !sessionToken.isBlank()
                 ? "upload:" + sessionToken
                 : "upload:" + (phone == null ? "anon" : phone);
-        rateLimit.check(throttleKey, 2);
-        var c = claims.upload(sessionToken, phone, vehicleNo, image, lat, lng);
-        return Map.of(
-                "id", c.getId(),
-                "status", c.getStatus().name(),
-                "receiptKey", c.getReceiptKey(),
-                "volumeLitres", c.getVolumeLitres(),
-                "message", "Submitted for verification. Coins after daily confirmation."
-        );
+        // Soft burst limit: up to 5 uploads / 10s per user (supports retries + ~3–5 QPS overall via Gemini slots).
+        rateLimit.checkWindow(throttleKey, 5, 10);
+
+        try {
+            var c = claims.upload(sessionToken, phone, vehicleNo, image, lat, lng);
+            log.info("UPLOAD ok id={} receipt={} status={}", c.getId(), c.getReceiptKey(), c.getStatus());
+            return Map.of(
+                    "id", c.getId(),
+                    "status", c.getStatus().name(),
+                    "receiptKey", c.getReceiptKey(),
+                    "volumeLitres", c.getVolumeLitres(),
+                    "message", "Submitted for verification. Coins after daily confirmation."
+            );
+        } catch (Exception ex) {
+            log.warn("UPLOAD fail vehicle={} err={}", vehicleNo, ex.toString());
+            throw ex;
+        }
     }
 
     private Map<String, Object> dto(BillClaim c) {
