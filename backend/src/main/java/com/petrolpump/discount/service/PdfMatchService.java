@@ -4,37 +4,34 @@ import com.petrolpump.discount.domain.*;
 import com.petrolpump.discount.repo.*;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.text.TextPosition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+/**
+ * Match queued bill claims against SiteOmat Transaction Report PDFs.
+ * Only the Transaction ID column is parsed; claims match on FCC ID / Trans ID.
+ */
 @Service
 public class PdfMatchService {
     private static final Logger log = LoggerFactory.getLogger(PdfMatchService.class);
 
-    /**
-     * SiteOmat rows often put Transaction ID right after PreAuth / Preset type,
-     * e.g. {@code PreAuth     300000261  2282.20} or {@code PreAuth   Money 300000158}.
-     */
-    private static final Pattern TXN_AFTER_PREAUTH = Pattern.compile(
-            "(?i)PreAuth\\s+(?:\\S+\\s+)?(\\d{9})(?!\\d)");
+    /** SiteOmat: Receipt No ~x=40; Transaction ID sits at ~319 (empty preset) or ~379 (Money/Volume). */
+    private static final float TXN_COLUMN_MIN_X = 280f;
 
-    /**
-     * Multi-line SiteOmat rows put Transaction ID on the product continuation line:
-     * {@code Diesel (Rs.)  1000.00  300000158  1000.00}
-     */
-    private static final Pattern TXN_ON_CONTINUATION = Pattern.compile(
-            "(?i)(?:Rs\\.|Ltr)\\)?\\s+[\\d.]+\\s+(\\d{9})(?!\\d)\\s+[\\d.]+");
-
+    private static final Pattern NINE_DIGIT = Pattern.compile("^\\d{9}$");
     private static final Pattern LABELED_TXN = Pattern.compile(
             "(?i)(?:transaction\\s*id|trns\\.?\\s*id|txn\\s*id)\\s*[:#\\-]?\\s*(\\d{6,})");
 
@@ -53,8 +50,7 @@ public class PdfMatchService {
 
     @Transactional
     public Map<String, Object> processPdf(MultipartFile pdf, List<String> extraRejectIds) throws Exception {
-        String text = extractPdfText(pdf.getBytes());
-        Set<String> txnIds = extractTransactionIds(text);
+        Set<String> txnIds = extractTransactionIdsFromPdf(pdf.getBytes());
         log.info("PDF match start file={} bytes={} transactionIdsParsed={} sample={}",
                 pdf.getOriginalFilename(),
                 pdf.getSize(),
@@ -128,40 +124,66 @@ public class PdfMatchService {
         return out;
     }
 
-    static String extractPdfText(byte[] bytes) throws Exception {
+    /**
+     * Read only the Transaction ID column from a SiteOmat PDF (by glyph X position).
+     * Falls back to labeled text parsing if no column IDs are found.
+     */
+    static Set<String> extractTransactionIdsFromPdf(byte[] bytes) throws IOException {
+        Set<String> fromColumn = extractTxnIdsByColumnPosition(bytes);
+        if (!fromColumn.isEmpty()) return fromColumn;
+        String text = extractPdfText(bytes);
+        return extractTransactionIds(text);
+    }
+
+    static Set<String> extractTxnIdsByColumnPosition(byte[] bytes) throws IOException {
+        Set<String> out = new LinkedHashSet<>();
+        try (PDDocument doc = Loader.loadPDF(bytes)) {
+            List<String> ids = new ArrayList<>();
+            List<Float> xs = new ArrayList<>();
+            PDFTextStripper stripper = new PDFTextStripper() {
+                @Override
+                protected void writeString(String text, List<TextPosition> positions) {
+                    if (positions == null || positions.isEmpty()) return;
+                    String t = text == null ? "" : text.trim();
+                    if (!NINE_DIGIT.matcher(t).matches()) return;
+                    ids.add(t);
+                    xs.add(positions.get(0).getXDirAdj());
+                }
+            };
+            stripper.getText(doc);
+            for (int i = 0; i < ids.size(); i++) {
+                if (xs.get(i) >= TXN_COLUMN_MIN_X) {
+                    String key = last9(ids.get(i));
+                    if (key != null) out.add(key);
+                }
+            }
+        }
+        return out;
+    }
+
+    static String extractPdfText(byte[] bytes) throws IOException {
         try (PDDocument doc = Loader.loadPDF(bytes)) {
             PDFTextStripper stripper = new PDFTextStripper();
-            stripper.setSortByPosition(true);
+            stripper.setSortByPosition(false);
             return stripper.getText(doc);
         }
     }
 
     /**
-     * Parse Transaction ID values from SiteOmat Transaction Report text.
-     * SiteOmat splits the "Transaction ID" header across lines, so we locate IDs by
-     * row position (after PreAuth / on product continuation), not by column index.
+     * Text fallback for simple tabular / labeled PDFs (unit tests + non-SiteOmat exports).
+     * Prefer {@link #extractTransactionIdsFromPdf(byte[])} for real SiteOmat reports.
      */
     static Set<String> extractTransactionIds(String text) {
         Set<String> out = new LinkedHashSet<>();
         if (text == null || text.isBlank()) return out;
 
-        addAll(out, TXN_AFTER_PREAUTH, text);
-        addAll(out, TXN_ON_CONTINUATION, text);
-        addAll(out, LABELED_TXN, text);
-
-        // Fallback: header still on one line (non-SiteOmat exports)
-        if (out.isEmpty()) {
-            out.addAll(extractByTransactionIdColumn(text));
-        }
-        return out;
-    }
-
-    private static void addAll(Set<String> out, Pattern pattern, String text) {
-        Matcher m = pattern.matcher(text);
-        while (m.find()) {
-            String key = last9(m.group(1));
+        Matcher labeled = LABELED_TXN.matcher(text);
+        while (labeled.find()) {
+            String key = last9(labeled.group(1));
             if (key != null) out.add(key);
         }
+        out.addAll(extractByTransactionIdColumn(text));
+        return out;
     }
 
     static Set<String> extractByTransactionIdColumn(String text) {
@@ -195,6 +217,7 @@ public class PdfMatchService {
         return out;
     }
 
+    /** FCC ID + Trans ID from the bill (OCR); either may equal PDF Transaction ID. */
     static List<String> billMatchKeys(BillClaim c) {
         LinkedHashSet<String> keys = new LinkedHashSet<>();
         if (c.getReceiptKey() != null && !c.getReceiptKey().isBlank()) keys.add(c.getReceiptKey());

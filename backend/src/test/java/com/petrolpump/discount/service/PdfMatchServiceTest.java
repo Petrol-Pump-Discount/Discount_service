@@ -1,8 +1,5 @@
 package com.petrolpump.discount.service;
 
-import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -43,43 +40,18 @@ class PdfMatchServiceTest {
     }
 
     @Test
-    void extractsSiteOmatPreAuthAndContinuationTransactionIds() {
-        String text = """
-                SiteOmat - Transaction Report
-                Ser. Receipt nt DU DU Global Vehicle Vehicle Preset Preset Transaction Sale Start
-                No. No. Product Amount(Rs.) Volume(Ltr) Unit Method
-                High
-                 1  300000158 Speed  1000.00  10.020  99.79  Cash  13/08/26  08:43:29   4  3  12  PreAuth   Money
-                Diesel (Rs.)  1000.00  300000158  1000.00  13/08/26  08:42:35  'AA'  5071894.540  5071904.560  O
-                High
-                 35  300000260 Speed  2282.20  22.870  99.79  Cash  13/08/26  15:09:09   7  5  20  PreAuth     300000261  2282.20  13/08/26  15:06:06  'AA'  1059806.320  1059829.190  O
-                Diesel
-                High
-                Diesel (Rs.)  1501.00  300000265  1501.00  13/08/26
-                """;
-        Set<String> ids = PdfMatchService.extractTransactionIds(text);
-        assertTrue(ids.contains("300000158"), ids.toString());
-        assertTrue(ids.contains("300000261"), ids.toString());
-        assertTrue(ids.contains("300000265"), ids.toString());
-        // Receipt No that is not also Transaction ID should not be required — 300000260 is receipt for row 35
-        // (may or may not appear; we only assert Transaction IDs)
-        assertFalse(ids.contains("5071894"), "totalizer must not match");
-    }
-
-    @Test
-    void extractsFromRealSiteOmatPdfIfPresent() throws Exception {
-        Path pdf = Path.of(System.getProperty("user.home"), "Downloads", "SiteOmat - Transaction Report.pdf");
+    void extractsTxnColumnFromRealSiteOmatPdfIfPresent() throws Exception {
+        Path pdf = Path.of(System.getProperty("user.home"), "Downloads", "SiteOmat - Transaction Report (1).pdf");
         if (!Files.isRegularFile(pdf)) {
-            return; // optional local fixture
+            pdf = Path.of(System.getProperty("user.home"), "Downloads", "SiteOmat - Transaction Report.pdf");
         }
-        String text;
-        try (PDDocument doc = Loader.loadPDF(Files.readAllBytes(pdf))) {
-            PDFTextStripper stripper = new PDFTextStripper();
-            stripper.setSortByPosition(true);
-            text = stripper.getText(doc);
+        if (!Files.isRegularFile(pdf)) {
+            return;
         }
-        Set<String> ids = PdfMatchService.extractTransactionIds(text);
-        assertTrue(ids.contains("300000261"), "missing 300000261 in " + ids);
-        assertTrue(ids.contains("300000265"), "missing 300000265 in " + ids);
+        Set<String> ids = PdfMatchService.extractTransactionIdsFromPdf(Files.readAllBytes(pdf));
+        assertTrue(ids.size() >= 100, "expected many txn ids, got " + ids.size());
+        assertTrue(ids.contains("300004636"), "Transaction ID column must include 300004636");
+        assertTrue(ids.contains("300003920"), "shifted txn column (empty preset) must include 300003920");
+        // Receipt-only numbers at left must not be required; but 636 is in txn col
     }
 }
