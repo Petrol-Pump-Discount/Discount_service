@@ -26,8 +26,8 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 /**
- * OCR via Gemini. Concurrent calls are limited (target ~3–5 in-flight) with
- * short retries on 429/503 — free/paid Gemini quotas fail hard under burst load.
+ * Gemini OCR. Free-tier keys often return 429 even for a single call when daily/RPM
+ * quota is exhausted — callers should fall back to local OCR.
  */
 @Service
 public class GeminiBillOcrService {
@@ -35,8 +35,8 @@ public class GeminiBillOcrService {
     private static final Set<String> ALLOWED_MIME = Set.of(
             "image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"
     );
-    private static final int MAX_IN_FLIGHT = 5;
-    private static final int MAX_ATTEMPTS = 3;
+    private static final int MAX_IN_FLIGHT = 4;
+    private static final int MAX_ATTEMPTS = 2;
 
     private final RestClient restClient;
     private final ObjectMapper mapper;
@@ -47,7 +47,7 @@ public class GeminiBillOcrService {
 
     public GeminiBillOcrService(
             @Value("${app.gemini.api-key:}") String apiKey,
-            @Value("${app.gemini.model:gemini-flash-latest}") String model) {
+            @Value("${app.gemini.model:gemini-2.0-flash}") String model) {
         this.mapper = new ObjectMapper();
         this.apiKey = apiKey == null ? "" : apiKey.trim();
         this.model = model;
@@ -56,7 +56,7 @@ public class GeminiBillOcrService {
                 .executor(httpExecutor)
                 .build();
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(http);
-        factory.setReadTimeout(Duration.ofSeconds(55));
+        factory.setReadTimeout(Duration.ofSeconds(40));
         this.restClient = RestClient.builder().requestFactory(factory).build();
     }
 
@@ -64,45 +64,79 @@ public class GeminiBillOcrService {
         return !apiKey.isBlank();
     }
 
+    /** Multipart entry (gemini-only mode). */
     public BillOcrResult extract(MultipartFile image) {
-        if (!isConfigured()) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "Bill reading is temporarily unavailable. Please try again shortly.");
-        }
-
-        boolean acquired;
         try {
-            acquired = slots.tryAcquire(45, TimeUnit.SECONDS);
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "Upload interrupted — please try again.");
-        }
-        if (!acquired) {
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
-                    "Many bills are being read right now. Wait a few seconds and try again.");
-        }
-
-        long t0 = System.currentTimeMillis();
-        try {
+            String mime = image.getContentType() == null ? "image/jpeg" : image.getContentType().toLowerCase();
+            if (mime.contains(";")) mime = mime.substring(0, mime.indexOf(';')).trim();
+            if (!ALLOWED_MIME.contains(mime) && !mime.startsWith("image/")) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only image uploads allowed");
+            }
             byte[] compressed = ImageCompressUtil.toJpegBytes(image.getBytes());
-            log.info("OCR start size={}kb inFlight≈{}", compressed.length / 1024,
-                    MAX_IN_FLIGHT - slots.availablePermits());
-            BillOcrResult result = callWithRetries(compressed);
-            log.info("OCR ok in {}ms", System.currentTimeMillis() - t0);
-            return result;
+            return extractBytes(compressed);
         } catch (ResponseStatusException ex) {
             throw ex;
         } catch (Exception ex) {
-            log.warn("OCR failed after {}ms: {}", System.currentTimeMillis() - t0, ex.toString());
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "Could not read the bill photo. Take a clearer photo and try again.");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not process image");
+        }
+    }
+
+    public BillOcrResult extractBytes(byte[] jpegBytes) {
+        return withSlot(() -> callWithRetries(jpegBytes));
+    }
+
+    /** Single Gemini call — used by auto-fallback so we don't burn time on 429 retries. */
+    public BillOcrResult extractBytesOnce(byte[] jpegBytes) {
+        return withSlot(() -> {
+            try {
+                return callOnce(jpegBytes);
+            } catch (RestClientResponseException ex) {
+                int code = ex.getStatusCode().value();
+                log.warn("Gemini HTTP {} bodySnippet={}", code, snippet(ex.getResponseBodyAsString()));
+                if (code == 429) {
+                    throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Gemini quota exceeded");
+                }
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini OCR failed");
+            } catch (ResponseStatusException ex) {
+                throw ex;
+            } catch (Exception ex) {
+                log.warn("Gemini error: {}", ex.toString());
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini OCR failed");
+            }
+        });
+    }
+
+    private BillOcrResult withSlot(OcrCall call) {
+        if (!isConfigured()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Gemini not configured");
+        }
+        boolean acquired;
+        try {
+            acquired = slots.tryAcquire(20, TimeUnit.SECONDS);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Upload interrupted");
+        }
+        if (!acquired) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Bill reading is busy");
+        }
+        long t0 = System.currentTimeMillis();
+        try {
+            log.info("Gemini OCR slot acquired inFlight≈{}", MAX_IN_FLIGHT - slots.availablePermits());
+            BillOcrResult r = call.run();
+            log.info("OCR ok provider=gemini in {}ms", System.currentTimeMillis() - t0);
+            return r;
+        } catch (ResponseStatusException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            log.warn("Gemini OCR failed: {}", ex.toString());
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Gemini OCR failed");
         } finally {
             slots.release();
         }
     }
 
-    private BillOcrResult callWithRetries(byte[] jpegBytes) throws Exception {
+    private BillOcrResult callWithRetries(byte[] jpegBytes) {
         Exception last = null;
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
@@ -110,30 +144,25 @@ public class GeminiBillOcrService {
             } catch (RestClientResponseException ex) {
                 last = ex;
                 int code = ex.getStatusCode().value();
-                boolean retryable = code == 429 || code == 503 || code == 500;
-                log.warn("Gemini HTTP {} attempt {}/{}", code, attempt, MAX_ATTEMPTS);
-                if (!retryable || attempt == MAX_ATTEMPTS) {
+                log.warn("Gemini HTTP {} attempt {}/{} snippet={}", code, attempt, MAX_ATTEMPTS,
+                        snippet(ex.getResponseBodyAsString()));
+                if (code == 429) {
+                    // Fail fast — quota won't recover in milliseconds; let local OCR take over.
+                    throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Gemini quota exceeded");
+                }
+                if (attempt == MAX_ATTEMPTS || (code != 500 && code != 503)) {
                     break;
                 }
-                sleepBackoff(attempt, ex);
+                sleep(300L * attempt);
             } catch (Exception ex) {
                 last = ex;
-                String msg = ex.getMessage() == null ? "" : ex.getMessage().toLowerCase();
-                boolean retryable = msg.contains("429") || msg.contains("resource_exhausted")
-                        || msg.contains("unavailable") || msg.contains("timed out") || msg.contains("timeout");
                 log.warn("Gemini error attempt {}/{}: {}", attempt, MAX_ATTEMPTS, ex.toString());
-                if (!retryable || attempt == MAX_ATTEMPTS) {
-                    break;
-                }
-                sleepBackoff(attempt, null);
+                if (attempt == MAX_ATTEMPTS) break;
+                sleep(300L * attempt);
             }
         }
-        if (last instanceof RestClientResponseException rex && rex.getStatusCode().value() == 429) {
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
-                    "Bill reading is busy. Wait a few seconds and try again.");
-        }
         throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                "Could not read the bill photo. Take a clearer photo and try again.");
+                last == null ? "Gemini OCR failed" : "Gemini OCR failed");
     }
 
     private BillOcrResult callOnce(byte[] jpegBytes) throws Exception {
@@ -201,30 +230,23 @@ public class GeminiBillOcrService {
         return out;
     }
 
-    private static void sleepBackoff(int attempt, RestClientResponseException ex) {
-        long ms = 400L * attempt * attempt;
-        if (ex != null) {
-            String ra = ex.getResponseHeaders() == null ? null : ex.getResponseHeaders().getFirst("Retry-After");
-            if (ra != null) {
-                try {
-                    ms = Math.max(ms, Long.parseLong(ra.trim()) * 1000L);
-                } catch (NumberFormatException ignored) {
-                    /* ignore */
-                }
-            }
-        }
+    private static void sleep(long ms) {
         try {
-            Thread.sleep(Math.min(ms, 8000L));
+            Thread.sleep(ms);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
         }
     }
 
+    private static String snippet(String body) {
+        if (body == null) return "";
+        String t = body.replaceAll("\\s+", " ").trim();
+        return t.length() > 180 ? t.substring(0, 180) : t;
+    }
+
     private static String textOrNull(JsonNode json, String field) {
         JsonNode n = json.get(field);
-        if (n == null || n.isNull()) {
-            return null;
-        }
+        if (n == null || n.isNull()) return null;
         String v = n.asText("").trim();
         return v.isEmpty() ? null : v;
     }
@@ -233,13 +255,14 @@ public class GeminiBillOcrService {
         String t = text.trim();
         if (t.startsWith("```")) {
             int nl = t.indexOf('\n');
-            if (nl > 0) {
-                t = t.substring(nl + 1);
-            }
-            if (t.endsWith("```")) {
-                t = t.substring(0, t.length() - 3);
-            }
+            if (nl > 0) t = t.substring(nl + 1);
+            if (t.endsWith("```")) t = t.substring(0, t.length() - 3);
         }
         return t.trim();
+    }
+
+    @FunctionalInterface
+    private interface OcrCall {
+        BillOcrResult run() throws Exception;
     }
 }

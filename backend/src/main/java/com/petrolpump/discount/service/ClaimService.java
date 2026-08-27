@@ -26,12 +26,12 @@ public class ClaimService {
     private final BillClaimRepository claims;
     private final PhoneBlacklistRepository blacklist;
     private final AdminAlertRepository alerts;
-    private final GeminiBillOcrService ocr;
+    private final BillOcrService ocr;
     private final Path uploadDir;
 
     public ClaimService(AuthService auth, AppUserRepository users, VehicleLinkRepository vehicles, PumpRepository pumps,
                         BillClaimRepository claims, PhoneBlacklistRepository blacklist,
-                        AdminAlertRepository alerts, GeminiBillOcrService ocr,
+                        AdminAlertRepository alerts, BillOcrService ocr,
                         @Value("${app.upload-dir:./uploads}") String uploadDir) throws Exception {
         this.auth = auth;
         this.users = users;

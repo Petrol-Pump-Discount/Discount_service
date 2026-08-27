@@ -42,3 +42,6 @@ app:
   gemini:
     api-key: ${GEMINI_API_KEY:}
     model: ${GEMINI_MODEL:gemini-flash-latest}
+  # auto = Gemini once then Tesseract on 429/fail; gemini|tesseract force one path
+  ocr:
+    mode: ${OCR_MODE:auto}
