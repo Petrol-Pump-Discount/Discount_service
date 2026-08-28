@@ -1,7 +1,9 @@
 package com.petrolpump.discount.web;
 
 import com.petrolpump.discount.domain.BillClaim;
+import com.petrolpump.discount.domain.WalletAdjustment;
 import com.petrolpump.discount.repo.BillClaimRepository;
+import com.petrolpump.discount.repo.WalletAdjustmentRepository;
 import com.petrolpump.discount.service.AuthService;
 import com.petrolpump.discount.service.ClaimService;
 import com.petrolpump.discount.service.RateLimitService;
@@ -12,7 +14,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/claims")
@@ -22,22 +23,30 @@ public class ClaimController {
     private final ClaimService claims;
     private final AuthService auth;
     private final BillClaimRepository claimRepo;
+    private final WalletAdjustmentRepository walletAdjustments;
     private final RateLimitService rateLimit;
 
     public ClaimController(ClaimService claims, AuthService auth, BillClaimRepository claimRepo,
-                           RateLimitService rateLimit) {
+                           WalletAdjustmentRepository walletAdjustments, RateLimitService rateLimit) {
         this.claims = claims;
         this.auth = auth;
         this.claimRepo = claimRepo;
+        this.walletAdjustments = walletAdjustments;
         this.rateLimit = rateLimit;
     }
 
     @GetMapping("/mine")
     public List<Map<String, Object>> mine(@RequestHeader("X-Session-Token") String token) {
         var user = auth.requireUser(token);
-        return claimRepo.findByUserOrderByCreatedAtDesc(user).stream()
-                .map(this::dto)
-                .collect(Collectors.toList());
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (BillClaim c : claimRepo.findByUserOrderByCreatedAtDesc(user)) {
+            out.add(dto(c));
+        }
+        for (WalletAdjustment a : walletAdjustments.findByUserOrderByCreatedAtDesc(user)) {
+            out.add(walletDto(a));
+        }
+        out.sort((a, b) -> String.valueOf(b.get("createdAt")).compareTo(String.valueOf(a.get("createdAt"))));
+        return out;
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -49,7 +58,6 @@ public class ClaimController {
             @RequestParam double lat,
             @RequestParam double lng
     ) throws Exception {
-        // Log immediately so VPS logs show the hit even if later steps fail / throttle.
         long bytes = image == null ? 0 : image.getSize();
         log.info("UPLOAD hit vehicle={} bytes={} lat={} lng={} authed={}",
                 vehicleNo, bytes, lat, lng, sessionToken != null && !sessionToken.isBlank());
@@ -57,7 +65,6 @@ public class ClaimController {
         String throttleKey = sessionToken != null && !sessionToken.isBlank()
                 ? "upload:" + sessionToken
                 : "upload:" + (phone == null ? "anon" : phone);
-        // Soft burst limit: up to 5 uploads / 10s per user (supports retries + ~3–5 QPS overall via Gemini slots).
         rateLimit.checkWindow(throttleKey, 5, 10);
 
         try {
@@ -78,6 +85,7 @@ public class ClaimController {
 
     private Map<String, Object> dto(BillClaim c) {
         Map<String, Object> m = new LinkedHashMap<>();
+        m.put("kind", "CLAIM");
         m.put("id", c.getId());
         m.put("createdAt", c.getCreatedAt().toString());
         m.put("billTime", c.getBillTime() == null ? null : c.getBillTime().toString());
@@ -92,6 +100,24 @@ public class ClaimController {
         m.put("rejectReason", c.getRejectReason() == null ? "" : c.getRejectReason());
         m.put("coinsCredited", c.getCoinsCredited());
         m.put("decidedAt", c.getDecidedAt() == null ? null : c.getDecidedAt().toString());
+        return m;
+    }
+
+    private Map<String, Object> walletDto(WalletAdjustment a) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("kind", "ADJUSTMENT");
+        m.put("id", a.getId());
+        m.put("createdAt", a.getCreatedAt().toString());
+        m.put("status", a.getDeltaCoins() >= 0 ? "CREDIT" : "DEBIT");
+        m.put("coinsCredited", a.getDeltaCoins());
+        m.put("balanceAfter", a.getBalanceAfter());
+        m.put("rejectReason", a.getReason());
+        m.put("vehicleNo", "");
+        m.put("receiptKey", "Wallet adjustment");
+        m.put("billNo", "");
+        m.put("fccId", "");
+        m.put("transId", "");
+        m.put("volumeLitres", null);
         return m;
     }
 }

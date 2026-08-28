@@ -107,7 +107,7 @@ export function validateRadiusMeters(raw: string): string | null {
   if (!t) return 'Enter radius'
   if (!/^\d+(\.\d+)?$/.test(t)) return 'Radius must be a number'
   const n = Number(t)
-  if (n < 10 || n > 500) return 'Radius must be 10–500 metres'
+  if (!(n > 0)) return 'Radius must be greater than 0'
   return null
 }
 

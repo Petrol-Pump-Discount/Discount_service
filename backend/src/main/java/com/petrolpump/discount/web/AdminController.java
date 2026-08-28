@@ -6,9 +6,11 @@ import com.petrolpump.discount.service.AuthService;
 import com.petrolpump.discount.service.BusinessDay;
 import com.petrolpump.discount.service.PdfMatchService;
 import com.petrolpump.discount.service.VehicleNormalizer;
+import com.petrolpump.discount.service.WalletAdjustmentService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -38,17 +40,21 @@ public class AdminController {
     private final PumpRepository pumps;
     private final AppUserRepository users;
     private final VehicleLinkRepository vehicles;
+    private final WalletAdjustmentService walletAdjust;
+    private final WalletAdjustmentRepository walletAdjustments;
     private final Path uploadDir;
 
     public AdminController(AuthService auth, PdfMatchService pdfMatch, LoyaltyConfigRepository configs,
                            PhoneBlacklistRepository blacklist, RejectIdRepository rejectIds,
                            BillClaimRepository claims, RedeemTransactionRepository redeems,
                            AdminAlertRepository alerts, PumpRepository pumps, AppUserRepository users,
-                           VehicleLinkRepository vehicles,
+                           VehicleLinkRepository vehicles, WalletAdjustmentService walletAdjust,
+                           WalletAdjustmentRepository walletAdjustments,
                            @Value("${app.upload-dir:./uploads}") String uploadDir) {
         this.auth = auth; this.pdfMatch = pdfMatch; this.configs = configs; this.blacklist = blacklist;
         this.rejectIds = rejectIds; this.claims = claims; this.redeems = redeems; this.alerts = alerts;
         this.pumps = pumps; this.users = users; this.vehicles = vehicles;
+        this.walletAdjust = walletAdjust; this.walletAdjustments = walletAdjustments;
         this.uploadDir = Paths.get(uploadDir).toAbsolutePath().normalize();
     }
 
@@ -97,9 +103,41 @@ public class AdminController {
     public List<Map<String, Object>> claims(@RequestHeader("X-Session-Token") String token,
                                             @RequestParam(required = false) String status) {
         admin(token);
-        List<BillClaim> list = status == null ? claims.findAll()
-                : claims.findByStatusOrderByCreatedAtAsc(ClaimStatus.valueOf(status));
+        List<BillClaim> list = status == null
+                ? claims.findAll(Sort.by(Sort.Direction.DESC, "createdAt"))
+                : claims.findByStatusOrderByCreatedAtDesc(ClaimStatus.valueOf(status));
         return list.stream().map(this::claimDto).collect(Collectors.toList());
+    }
+
+    @PostMapping("/wallet/adjust")
+    public Map<String, Object> adjustWallet(@RequestHeader("X-Session-Token") String token,
+                                            @RequestBody Map<String, Object> body) {
+        AppUser adminUser = auth.requireRole(token, UserRole.ADMIN);
+        String phone = body.get("phone") == null ? "" : body.get("phone").toString();
+        String reason = body.get("reason") == null ? "" : body.get("reason").toString();
+        long coins;
+        try {
+            coins = Long.parseLong(body.get("coins") == null ? "0" : body.get("coins").toString().trim());
+        } catch (NumberFormatException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a whole number of coins");
+        }
+        String direction = body.get("direction") == null ? "add" : body.get("direction").toString().trim().toLowerCase();
+        long delta = "reduce".equals(direction) || "debit".equals(direction) || "remove".equals(direction)
+                ? -Math.abs(coins)
+                : Math.abs(coins);
+        if (coins <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Coins must be greater than 0");
+        }
+        WalletAdjustment row = walletAdjust.adjust(adminUser, phone, delta, reason);
+        return walletDto(row);
+    }
+
+    @GetMapping("/wallet/adjustments")
+    public List<Map<String, Object>> listWalletAdjustments(@RequestHeader("X-Session-Token") String token) {
+        admin(token);
+        return walletAdjustments.findTop100ByOrderByCreatedAtDesc().stream()
+                .map(this::walletDto)
+                .collect(Collectors.toList());
     }
 
     @GetMapping("/claims/{id}/photo")
@@ -287,6 +325,18 @@ public class AdminController {
         m.put("rejectReason", c.getRejectReason());
         m.put("createdAt", c.getCreatedAt().toString());
         m.put("hasPhoto", c.getImagePath() != null && !c.getImagePath().isBlank());
+        return m;
+    }
+
+    private Map<String, Object> walletDto(WalletAdjustment a) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", a.getId());
+        m.put("phone", a.getUser().getPhone());
+        m.put("deltaCoins", a.getDeltaCoins());
+        m.put("balanceAfter", a.getBalanceAfter());
+        m.put("reason", a.getReason());
+        m.put("adminPhone", a.getAdmin() == null ? "" : a.getAdmin().getPhone());
+        m.put("createdAt", a.getCreatedAt().toString());
         return m;
     }
 }

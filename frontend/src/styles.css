@@ -35,16 +35,16 @@ body {
     url('/iras-rhino-bg.png');
   background-repeat: no-repeat;
   background-attachment: fixed;
-  /* phone: small art at bottom */
-  background-size: min(72vw, 280px) auto;
+  /* phone: rhino sits lower */
+  background-size: min(85vw, 340px) auto;
   background-position: center bottom;
 }
 
 @media (min-width: 900px) {
   body {
-    /* laptop: modest art on the left */
-    background-size: min(38vw, 420px) auto;
-    background-position: left 4% bottom 2%;
+    /* desktop: rhino fills left half */
+    background-size: 50vw auto;
+    background-position: left center;
   }
 }
 

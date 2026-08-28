@@ -117,6 +117,15 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
   const [claimsBusy, setClaimsBusy] = useState(false)
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [photoBusyId, setPhotoBusyId] = useState<number | null>(null)
+  const [adjPhone, setAdjPhone] = useState('')
+  const [adjCoins, setAdjCoins] = useState('')
+  const [adjDirection, setAdjDirection] = useState<'add' | 'reduce'>('add')
+  const [adjReason, setAdjReason] = useState('')
+  const [adjBusy, setAdjBusy] = useState(false)
+  const [adjustments, setAdjustments] = useState<
+    { id: number; phone: string; deltaCoins: number; balanceAfter: number; reason: string; adminPhone: string; createdAt: string }[]
+  >([])
+  const [adjustmentsLoaded, setAdjustmentsLoaded] = useState(false)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const [ratesOpen, setRatesOpen] = useState(false)
   const [fold, setFold] = useState<Record<string, boolean>>({
@@ -449,6 +458,58 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
   function closePhoto() {
     if (photoUrl) URL.revokeObjectURL(photoUrl)
     setPhotoUrl(null)
+  }
+
+  async function submitWalletAdjust(e: FormEvent) {
+    e.preventDefault()
+    const phoneErr = validatePhone(adjPhone)
+    const coinsErr = validatePositiveInt(adjCoins, 'coins', 1, 100_000_000)
+    const reasonErr = validateReason(adjReason, { required: true, max: 280 })
+    if (phoneErr || coinsErr || reasonErr) {
+      setTouched((t) => ({ ...t, adjPhone: true, adjCoins: true, adjReason: true }))
+      setErr(phoneErr || coinsErr || reasonErr || 'Check fields')
+      return
+    }
+    setAdjBusy(true)
+    setErr('')
+    setMsg('')
+    try {
+      await api('/api/admin/wallet/adjust', {
+        method: 'POST',
+        body: JSON.stringify({
+          phone: normalizePhone(adjPhone),
+          coins: Number(adjCoins),
+          direction: adjDirection,
+          reason: adjReason.trim(),
+        }),
+      })
+      setMsg(
+        adjDirection === 'add'
+          ? `Added ${adjCoins} coins to ${normalizePhone(adjPhone)}`
+          : `Reduced ${adjCoins} coins from ${normalizePhone(adjPhone)}`,
+      )
+      setAdjCoins('')
+      setAdjReason('')
+      setAdjustments(await api('/api/admin/wallet/adjustments'))
+      setAdjustmentsLoaded(true)
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'Adjustment failed')
+    } finally {
+      setAdjBusy(false)
+    }
+  }
+
+  async function loadAdjustments() {
+    setAdjBusy(true)
+    setErr('')
+    try {
+      setAdjustments(await api('/api/admin/wallet/adjustments'))
+      setAdjustmentsLoaded(true)
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'Failed to load adjustments')
+    } finally {
+      setAdjBusy(false)
+    }
   }
 
   function numField(key: keyof Config, label: string) {
@@ -801,8 +862,99 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
           </div>
         )}
 
+        <div className={`card span-2${adjBusy ? ' is-busy' : ''}`}>
+          {adjBusy && (
+            <div className="loading-veil">
+              <LoadingBlock title="Updating wallet…" />
+            </div>
+          )}
+          <h3>6. Coin adjustments</h3>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Add or reduce coins for any account by phone. Shows on the user’s Claims page.
+          </p>
+          <form className="stack" onSubmit={submitWalletAdjust} noValidate>
+            <div className="row" style={{ alignItems: 'end' }}>
+              <TextInput
+                label="Phone"
+                inputMode="numeric"
+                maxLength={10}
+                value={adjPhone}
+                error={touched.adjPhone ? validatePhone(adjPhone) : null}
+                placeholder="9845134394"
+                onBlur={() => setTouched((t) => ({ ...t, adjPhone: true }))}
+                onChange={(e) => setAdjPhone(normalizePhone(e.target.value))}
+              />
+              <label className="field">
+                <span className="field-label">Action</span>
+                <select value={adjDirection} onChange={(e) => setAdjDirection(e.target.value as 'add' | 'reduce')}>
+                  <option value="add">Add coins</option>
+                  <option value="reduce">Reduce coins</option>
+                </select>
+              </label>
+              <TextInput
+                label="Coins"
+                inputMode="numeric"
+                value={adjCoins}
+                error={touched.adjCoins ? validatePositiveInt(adjCoins, 'coins', 1, 100_000_000) : null}
+                placeholder="100"
+                onBlur={() => setTouched((t) => ({ ...t, adjCoins: true }))}
+                onChange={(e) => setAdjCoins(e.target.value.replace(/\D/g, '').slice(0, 9))}
+              />
+            </div>
+            <TextInput
+              label="Reason"
+              value={adjReason}
+              error={touched.adjReason ? validateReason(adjReason, { required: true, max: 280 }) : null}
+              placeholder="Manual correction / goodwill credit"
+              onBlur={() => setTouched((t) => ({ ...t, adjReason: true }))}
+              onChange={(e) => setAdjReason(e.target.value.slice(0, 280))}
+            />
+            <div className="row">
+              <button className="btn btn-primary" type="submit" disabled={adjBusy}>
+                {adjDirection === 'add' ? 'Add coins' : 'Reduce coins'}
+              </button>
+              <button className="btn btn-dark" type="button" disabled={adjBusy} onClick={() => void loadAdjustments()}>
+                Refresh log
+              </button>
+            </div>
+          </form>
+          {adjustmentsLoaded && (
+            <div style={{ overflowX: 'auto', marginTop: 12 }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>When</th>
+                    <th>Phone</th>
+                    <th>Change</th>
+                    <th>Balance</th>
+                    <th>Reason</th>
+                    <th>Admin</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adjustments.map((a) => (
+                    <tr key={a.id}>
+                      <td>{new Date(a.createdAt).toLocaleString()}</td>
+                      <td>{a.phone}</td>
+                      <td>
+                        <span className={`badge ${a.deltaCoins >= 0 ? 'ok' : 'bad'}`}>
+                          {a.deltaCoins >= 0 ? `+${a.deltaCoins}` : a.deltaCoins}
+                        </span>
+                      </td>
+                      <td>{a.balanceAfter}</td>
+                      <td>{a.reason}</td>
+                      <td>{a.adminPhone || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {adjustments.length === 0 && <p className="muted">No adjustments yet</p>}
+            </div>
+          )}
+        </div>
+
         <div className="card span-2">
-          <Fold title="6. Rates & geofence" open={ratesOpen} onToggle={() => setRatesOpen((o) => !o)}>
+          <Fold title="7. Rates & geofence" open={ratesOpen} onToggle={() => setRatesOpen((o) => !o)}>
             {cfg && (
               <form className="stack" onSubmit={saveConfig} noValidate>
                 <Fold
@@ -897,8 +1049,9 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
                   inputMode="decimal"
                   value={radius}
                   error={radiusErr}
+                  hint="Any positive metres (no upper limit)"
                   onBlur={() => setTouched((t) => ({ ...t, geo: true }))}
-                  onChange={(e) => setRadius(e.target.value.replace(/[^\d.]/g, '').slice(0, 6))}
+                  onChange={(e) => setRadius(e.target.value.replace(/[^\d.]/g, '').slice(0, 12))}
                 />
                 <button
                   className="btn btn-dark"
