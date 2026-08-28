@@ -4,6 +4,7 @@ import { api, getToken } from '../api/client'
 import { Shell } from '../components/Shell'
 
 type Claim = {
+  kind?: string
   id: number
   createdAt: string
   billTime?: string | null
@@ -12,11 +13,12 @@ type Claim = {
   receiptKey: string
   fccId: string
   transId: string
-  volumeLitres: number
+  volumeLitres: number | null
   saleAmount?: number | null
   status: string
   rejectReason: string
   coinsCredited: number
+  balanceAfter?: number
   decidedAt?: string | null
 }
 
@@ -52,51 +54,75 @@ export function ClaimsPage({ onRole }: { onRole?: (r: string) => void }) {
         </div>
       )}
       <div className="dash-grid">
-        {claims.map((c) => (
-          <div className="card claim-card" key={c.id}>
-            <div className="row" style={{ justifyContent: 'space-between' }}>
-              <span
-                className={`badge ${
-                  c.status === 'APPROVED' ? 'ok' : c.status === 'REJECTED' ? 'bad' : 'warn'
-                }`}
-              >
-                {c.status}
-              </span>
-              <span className="muted">{new Date(c.createdAt).toLocaleString()}</span>
-            </div>
-            <p style={{ margin: '0.6rem 0 0.2rem' }}>
-              <strong>{c.vehicleNo}</strong>
-              {c.volumeLitres != null && (
-                <span className="muted"> · {c.volumeLitres} L</span>
+        {claims.map((c) => {
+          const adjustment = c.kind === 'ADJUSTMENT'
+          const badgeClass =
+            c.status === 'APPROVED' || c.status === 'CREDIT'
+              ? 'ok'
+              : c.status === 'REJECTED' || c.status === 'DEBIT'
+                ? 'bad'
+                : 'warn'
+          return (
+            <div className="card claim-card" key={`${c.kind || 'CLAIM'}-${c.id}`}>
+              <div className="row" style={{ justifyContent: 'space-between' }}>
+                <span className={`badge ${badgeClass}`}>{c.status}</span>
+                <span className="muted">{new Date(c.createdAt).toLocaleString()}</span>
+              </div>
+              {adjustment ? (
+                <>
+                  <p style={{ margin: '0.6rem 0 0.2rem' }}>
+                    <strong>Wallet adjustment</strong>
+                  </p>
+                  <p className="muted" style={{ margin: 0 }}>
+                    {c.rejectReason || 'Admin coin update'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p style={{ margin: '0.6rem 0 0.2rem' }}>
+                    <strong>{c.vehicleNo}</strong>
+                    {c.volumeLitres != null && (
+                      <span className="muted"> · {c.volumeLitres} L</span>
+                    )}
+                  </p>
+                  <p className="muted" style={{ margin: 0 }}>
+                    Receipt {c.receiptKey}
+                    {c.billNo ? ` · Bill ${c.billNo}` : ''}
+                  </p>
+                  {(c.fccId || c.transId) && (
+                    <p className="muted" style={{ margin: '0.25rem 0 0' }}>
+                      {c.fccId ? `FCC ${c.fccId}` : ''}
+                      {c.fccId && c.transId ? ' · ' : ''}
+                      {c.transId ? `Trans ${c.transId}` : ''}
+                    </p>
+                  )}
+                </>
               )}
-            </p>
-            <p className="muted" style={{ margin: 0 }}>
-              Receipt {c.receiptKey}
-              {c.billNo ? ` · Bill ${c.billNo}` : ''}
-            </p>
-            {(c.fccId || c.transId) && (
-              <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-                {c.fccId ? `FCC ${c.fccId}` : ''}
-                {c.fccId && c.transId ? ' · ' : ''}
-                {c.transId ? `Trans ${c.transId}` : ''}
-              </p>
-            )}
-            <div className="wallet" style={{ marginTop: 10, padding: '0.75rem 1rem' }}>
-              <div>
-                <div style={{ opacity: 0.75, fontSize: '0.8rem' }}>Coins credited</div>
-                <strong style={{ fontSize: '1.25rem' }}>{c.coinsCredited}</strong>
+              <div className="wallet" style={{ marginTop: 10, padding: '0.75rem 1rem' }}>
+                <div>
+                  <div style={{ opacity: 0.75, fontSize: '0.8rem' }}>
+                    {adjustment ? 'Coins change' : 'Coins credited'}
+                  </div>
+                  <strong style={{ fontSize: '1.25rem' }}>
+                    {c.coinsCredited > 0 ? `+${c.coinsCredited}` : c.coinsCredited}
+                  </strong>
+                </div>
+                <div style={{ textAlign: 'right', fontSize: '0.9rem' }}>
+                  {adjustment && c.balanceAfter != null ? (
+                    <>Balance {c.balanceAfter}</>
+                  ) : (
+                    <>₹{(c.coinsCredited / 100).toFixed(2)}</>
+                  )}
+                </div>
               </div>
-              <div style={{ textAlign: 'right', fontSize: '0.9rem' }}>
-                ₹{(c.coinsCredited / 100).toFixed(2)}
-              </div>
+              {!adjustment && c.status === 'REJECTED' && c.rejectReason && (
+                <p className="err" style={{ marginBottom: 0, marginTop: 8 }}>
+                  {c.rejectReason}
+                </p>
+              )}
             </div>
-            {c.status === 'REJECTED' && c.rejectReason && (
-              <p className="err" style={{ marginBottom: 0, marginTop: 8 }}>
-                {c.rejectReason}
-              </p>
-            )}
-          </div>
-        ))}
+          )
+        })}
         {claims.length === 0 && !err && (
           <div className="card span-2">
             <p className="muted" style={{ margin: 0 }}>
