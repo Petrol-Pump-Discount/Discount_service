@@ -35,8 +35,8 @@ body {
     url('/iras-rhino-bg.png');
   background-repeat: no-repeat;
   background-attachment: fixed;
-  /* phone: rhino sits lower */
-  background-size: min(85vw, 340px) auto;
+  /* phone: ~40% viewport height, centered, sitting from bottom up toward mid */
+  background-size: auto 40vh;
   background-position: center bottom;
 }
 
