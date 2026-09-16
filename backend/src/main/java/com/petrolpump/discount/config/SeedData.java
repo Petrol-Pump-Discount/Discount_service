@@ -31,7 +31,7 @@ public class SeedData {
                 p.setRedeemToken("pump-demo-token");
                 p.setAddress("Ground Floor, NH 4, near Anjaniya Swami Temple, Mangangi Thanda, Tumkur, Karnataka 572139");
                 p.setContactName("Dhanush R");
-                p.setContactPhone("9558166221");
+                p.setContactPhone("9448166221");
                 p.setMapsUrl("https://maps.app.goo.gl/NWSYMhsgTPrDCrKs6");
                 pumps.save(p);
             } else {
@@ -46,8 +46,9 @@ public class SeedData {
                     p.setContactName("Dhanush R");
                     dirty = true;
                 }
-                if (p.getContactPhone() == null || p.getContactPhone().isBlank()) {
-                    p.setContactPhone("9558166221");
+                if (p.getContactPhone() == null || p.getContactPhone().isBlank()
+                        || "9558166221".equals(p.getContactPhone().replaceAll("\\D", ""))) {
+                    p.setContactPhone("9448166221");
                     dirty = true;
                 }
                 if (p.getMapsUrl() == null || p.getMapsUrl().isBlank()) {
