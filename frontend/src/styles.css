@@ -652,6 +652,16 @@ select[aria-invalid="true"] {
 }
 .foot-chip-text {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.foot-maps-hint {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #F15A29;
+  text-transform: uppercase;
 }
 
 .simple-steps {

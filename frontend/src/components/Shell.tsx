@@ -85,15 +85,18 @@ export function FixedStationBar({ station }: { station?: StationInfo | null }) {
     station?.address ||
     'Ground Floor, NH 4, near Anjaniya Swami Temple, Mangangi Thanda, Tumkur, Karnataka 572139'
   const contact = station?.contactName || 'Dhanush R'
-  const phone = station?.contactPhone || '9558166221'
+  const phone = station?.contactPhone || '9448166221'
   const maps = station?.mapsUrl || 'https://maps.app.goo.gl/NWSYMhsgTPrDCrKs6'
 
   return (
     <footer className="fixed-station-bar">
       <div className="fixed-station-inner">
-        <a className="foot-chip" href={maps} target="_blank" rel="noreferrer" title="Open in Google Maps">
+        <a className="foot-chip" href={maps} target="_blank" rel="noreferrer" title="Open station location in Google Maps">
           <MapsIcon />
-          <span className="foot-chip-text">{address}</span>
+          <span className="foot-chip-text">
+            <span className="foot-maps-hint">Tap to open in Google Maps</span>
+            {address}
+          </span>
         </a>
         <a className="foot-chip" href={`tel:+91${phone}`} title={`Call ${contact}`}>
           <PhoneIcon />

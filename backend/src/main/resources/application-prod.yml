@@ -8,11 +8,13 @@ spring:
     password: ${DATABASE_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: ${DB_POOL_SIZE:5}
-      minimum-idle: 1
-      connection-timeout: 30000
-      idle-timeout: 600000
-      max-lifetime: 1800000
+      # Neon Launch bills compute while awake — drop idle connections so DB can scale to zero.
+      maximum-pool-size: ${DB_POOL_SIZE:3}
+      minimum-idle: 0
+      connection-timeout: 20000
+      idle-timeout: 60000
+      max-lifetime: 300000
+      keepalive-time: 0
   h2:
     console:
       enabled: false
