@@ -9,10 +9,6 @@ export function LegalPage({ kind }: { kind: 'terms' | 'privacy' | 'disclaimer' }
     <Shell title={title} showStationBar={false}>
       <div className="card legal-doc">
         <p className="muted legal-updated">Last updated: 17 Sep 2026 · For Nagashree Service Station loyalty programme</p>
-        <p className="err" style={{ marginTop: '0.75rem' }}>
-          This text is an operational template for the pump app. Have a qualified lawyer in Karnataka / India
-          review and customise it for your business entity before relying on it in a dispute.
-        </p>
 
         {kind === 'terms' && <TermsBody />}
         {kind === 'privacy' && <PrivacyBody />}
