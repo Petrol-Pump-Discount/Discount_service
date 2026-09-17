@@ -1,6 +1,7 @@
 package com.petrolpump.discount.service.otp;
 
 import com.twilio.Twilio;
+import com.twilio.exception.ApiException;
 import com.twilio.rest.api.v2010.account.Message;
 import com.twilio.type.PhoneNumber;
 import org.slf4j.Logger;
@@ -11,6 +12,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
 /**
  * Sends OTP via Twilio Programmable Messaging so the SMS body is fully customizable.
  */
@@ -19,12 +27,14 @@ import org.springframework.web.server.ResponseStatusException;
 public class TwilioSmsOtpSender implements OtpSender {
     private static final Logger log = LoggerFactory.getLogger(TwilioSmsOtpSender.class);
     private static final String DEFAULT_BODY = "Your OTP for Nagashree Service Station Login is: {otp}";
+    private static final long SEND_TIMEOUT_SEC = 12;
 
     private final String accountSid;
     private final String authToken;
     private final String fromNumber;
     private final String bodyTemplate;
-    private boolean initialized;
+    private final ExecutorService sendPool = Executors.newFixedThreadPool(2);
+    private volatile boolean initialized;
 
     public TwilioSmsOtpSender(
             @Value("${app.twilio.account-sid:}") String accountSid,
@@ -45,11 +55,12 @@ public class TwilioSmsOtpSender implements OtpSender {
     private void ensureInit() {
         if (initialized) return;
         if (accountSid.isBlank() || authToken.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Twilio account not configured");
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "SMS is not configured. Please try again later.");
         }
         if (fromNumber.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                    "TWILIO_FROM_NUMBER missing — add your Twilio phone number in .env");
+                    "SMS is not configured. Please try again later.");
         }
         Twilio.init(accountSid, authToken);
         initialized = true;
@@ -63,7 +74,37 @@ public class TwilioSmsOtpSender implements OtpSender {
     public void send(String phone10, String otp) {
         ensureInit();
         String body = bodyTemplate.replace("{otp}", otp);
-        Message.creator(new PhoneNumber(e164(phone10)), new PhoneNumber(fromNumber), body).create();
+        Future<Message> fut = sendPool.submit(() ->
+                Message.creator(new PhoneNumber(e164(phone10)), new PhoneNumber(fromNumber), body).create());
+        try {
+            fut.get(SEND_TIMEOUT_SEC, TimeUnit.SECONDS);
+        } catch (TimeoutException ex) {
+            fut.cancel(true);
+            log.error("Twilio OTP timed out after {}s for {}", SEND_TIMEOUT_SEC, phone10);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Could not send OTP right now. Wait a moment and try again.");
+        } catch (ExecutionException ex) {
+            Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+            log.error("Twilio OTP failed for {}: {}", phone10, cause.toString());
+            if (cause instanceof ApiException api) {
+                int code = api.getCode() == null ? 0 : api.getCode();
+                // 20003 auth, 21211 invalid to, 21608 trial can't SMS unverified, 21614 invalid mobile
+                if (code == 21608 || code == 21614 || code == 21211) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Cannot send OTP to this number. Check the mobile number or Twilio trial limits.");
+                }
+                if (code == 20003) {
+                    throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                            "SMS service authentication failed. Contact the station admin.");
+                }
+            }
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Could not send OTP right now. Wait a moment and try again.");
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            fut.cancel(true);
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "OTP send interrupted");
+        }
     }
 
     @Override

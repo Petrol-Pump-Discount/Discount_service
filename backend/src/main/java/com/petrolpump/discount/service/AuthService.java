@@ -53,7 +53,6 @@ public class AuthService {
         if (prev != null && prev.plusSeconds(30).isAfter(now)) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Wait 30 seconds before requesting another OTP");
         }
-        lastRequest.put(key, now);
 
         String code = String.format("%06d", random.nextInt(1_000_000));
         if (!otpSender.providerVerifies()) {
@@ -63,13 +62,16 @@ public class AuthService {
         }
         try {
             otpSender.send(phone, code);
+            lastRequest.put(key, Instant.now());
+        } catch (ResponseStatusException ex) {
+            pending.remove(key);
+            throw ex;
         } catch (Exception ex) {
             pending.remove(key);
             org.slf4j.LoggerFactory.getLogger(AuthService.class)
                     .error("OTP send failed for {}: {}", phone, ex.toString());
-            String reason = ex.getMessage() == null ? "Failed to send OTP" : ex.getMessage();
-            if (reason.length() > 180) reason = reason.substring(0, 180);
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, reason);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Could not send OTP right now. Wait a moment and try again.");
         }
     }
 
