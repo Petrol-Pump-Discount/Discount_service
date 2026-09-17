@@ -86,8 +86,10 @@ public class TwilioSmsOtpSender implements OtpSender {
         } catch (ExecutionException ex) {
             Throwable cause = ex.getCause() == null ? ex : ex.getCause();
             log.error("Twilio OTP failed for {}: {}", phone10, cause.toString());
-            if (cause instanceof ApiException api) {
-                int code = api.getCode() == null ? 0 : api.getCode();
+            if (cause instanceof ApiException) {
+                ApiException api = (ApiException) cause;
+                Integer codeObj = api.getCode();
+                int code = codeObj == null ? 0 : codeObj;
                 // 20003 auth, 21211 invalid to, 21608 trial can't SMS unverified, 21614 invalid mobile
                 if (code == 21608 || code == 21614 || code == 21211) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
