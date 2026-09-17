@@ -741,3 +741,11 @@ select[aria-invalid="true"] {
   height: auto;
   border-radius: 8px;
 }
+
+.legal-foot{text-align:center;font-size:0.8rem;padding:0.75rem 1rem 1.25rem;opacity:0.9}
+.legal-foot a{color:inherit}
+.terms-check{display:flex;gap:0.55rem;align-items:flex-start;font-size:0.9rem;line-height:1.35}
+.terms-check input{margin-top:0.2rem}
+.legal-doc h2{font-size:1.05rem;margin:1rem 0 0.35rem}
+.legal-sections p,.legal-sections li{font-size:0.92rem;line-height:1.45}
+.legal-sections ul{padding-left:1.1rem}

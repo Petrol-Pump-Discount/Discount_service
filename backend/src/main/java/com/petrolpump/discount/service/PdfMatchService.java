@@ -9,9 +9,11 @@ import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -50,6 +52,13 @@ public class PdfMatchService {
 
     @Transactional
     public Map<String, Object> processPdf(MultipartFile pdf, List<String> extraRejectIds) throws Exception {
+        if (pdf == null || pdf.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "PDF required");
+        }
+        UploadMagic.requirePdf(pdf);
+        if (pdf.getSize() > 25L * 1024 * 1024) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "PDF too large (max 25MB)");
+        }
         Set<String> txnIds = extractTransactionIdsFromPdf(pdf.getBytes());
         log.info("PDF match start file={} bytes={} transactionIdsParsed={} sample={}",
                 pdf.getOriginalFilename(),

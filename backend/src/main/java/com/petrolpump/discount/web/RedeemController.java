@@ -1,6 +1,7 @@
 package com.petrolpump.discount.web;
 
 import com.petrolpump.discount.domain.RedeemTransaction;
+import com.petrolpump.discount.domain.UserRole;
 import com.petrolpump.discount.repo.PumpRepository;
 import com.petrolpump.discount.repo.RedeemTransactionRepository;
 import com.petrolpump.discount.service.AuthService;
@@ -34,7 +35,8 @@ public class RedeemController {
     @GetMapping("/pump/{token}")
     public Map<String, Object> pumpInfo(@PathVariable String token) {
         var p = redeem.requirePumpByToken(token);
-        return Map.of("pumpId", p.getId(), "name", p.getName(), "token", p.getRedeemToken());
+        // Do not echo redeem token — caller already has it from the QR URL.
+        return Map.of("pumpId", p.getId(), "name", p.getName());
     }
 
     @GetMapping("/mine")
@@ -50,7 +52,7 @@ public class RedeemController {
         var user = auth.requireUser(session);
         rateLimit.check("redeem-otp:" + user.getPhone(), 30);
         auth.requestOtp(user.getPhone(), AuthService.PURPOSE_REDEEM);
-        return Map.of("status", "ok", "message", "OTP sent to " + user.getPhone());
+        return Map.of("status", "ok", "message", "OTP sent to your mobile");
     }
 
     @PostMapping("/pay")
@@ -67,7 +69,9 @@ public class RedeemController {
         String pumpToken = String.valueOf(body.get("pumpToken"));
         Long coins = body.get("coins") == null ? null : Long.valueOf(body.get("coins").toString());
         Double rupees = body.get("rupees") == null ? null : Double.valueOf(body.get("rupees").toString());
-        var tx = redeem.redeem(user, pumpToken, coins, rupees);
+        Double lat = body.get("lat") == null ? null : Double.valueOf(body.get("lat").toString());
+        Double lng = body.get("lng") == null ? null : Double.valueOf(body.get("lng").toString());
+        var tx = redeem.redeem(user, pumpToken, coins, rupees, lat, lng);
         return Map.of(
                 "txnId", tx.getId(),
                 "coins", tx.getCoins(),
@@ -77,8 +81,10 @@ public class RedeemController {
         );
     }
 
+    /** Admin-only: print / share QR. Never public. */
     @GetMapping("/qr-link")
-    public Map<String, String> qrLink() {
+    public Map<String, String> qrLink(@RequestHeader("X-Session-Token") String session) {
+        auth.requireRole(session, UserRole.ADMIN);
         var p = pumps.findAll().get(0);
         return Map.of("url", "/redeem?token=" + p.getRedeemToken(), "token", p.getRedeemToken());
     }

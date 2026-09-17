@@ -46,31 +46,23 @@ public class ClaimService {
     }
 
     @Transactional
-    public BillClaim upload(String sessionToken, String phone, String vehicleNo, MultipartFile image,
+    public BillClaim upload(String sessionToken, String vehicleNo, MultipartFile image,
                             Double lat, Double lng) throws Exception {
         if (image == null || image.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Bill photo required");
         }
-
-        AppUser user;
-        if (sessionToken != null && !sessionToken.isBlank()) {
-            user = auth.requireUser(sessionToken);
-            phone = user.getPhone();
-        } else {
-            phone = AuthService.normalizePhone(phone);
-            user = users.findByPhone(phone)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Please register first"));
+        if (sessionToken == null || sessionToken.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Sign in required to upload a bill");
         }
+
+        AppUser user = auth.requireUser(sessionToken);
+        String phone = user.getPhone();
 
         if (blacklist.existsByPhone(phone)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Phone not eligible to claim");
         }
 
-        String ctype = image.getContentType() == null ? "" : image.getContentType().toLowerCase();
-        if (ctype.contains(";")) ctype = ctype.substring(0, ctype.indexOf(';')).trim();
-        if (!ctype.isBlank() && !ctype.startsWith("image/")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only image uploads allowed");
-        }
+        UploadMagic.requireImage(image);
         if (image.getSize() > 12L * 1024 * 1024) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Image too large (max 12MB)");
         }

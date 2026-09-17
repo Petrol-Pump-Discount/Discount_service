@@ -10,10 +10,19 @@ export function TopNav({ role }: { role?: string }) {
   const [confirmOut, setConfirmOut] = useState(false)
 
   function doSignOut() {
-    setToken(null)
-    setConfirmOut(false)
-    nav('/')
-    window.location.reload()
+    const t = getToken()
+    void (async () => {
+      try {
+        if (t) await api('/api/auth/logout', { method: 'POST', body: '{}' })
+      } catch {
+        /* still clear local session */
+      } finally {
+        setToken(null)
+        setConfirmOut(false)
+        nav('/')
+        window.location.reload()
+      }
+    })()
   }
 
   return (
@@ -144,6 +153,13 @@ export function Shell({
       <TopNav role={role} />
       <div className="shell-body">{children}</div>
       {showStationBar && <FixedStationBar station={station} />}
+      <p className="legal-foot muted">
+        <Link to="/terms">Terms</Link>
+        {' · '}
+        <Link to="/privacy">Privacy</Link>
+        {' · '}
+        <Link to="/disclaimer">Disclaimer</Link>
+      </p>
     </div>
   )
 }
