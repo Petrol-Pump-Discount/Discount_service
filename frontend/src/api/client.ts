@@ -27,7 +27,8 @@ async function parseError(res: Response): Promise<never> {
     if (res.status === 413) msg = 'Photo is too large. Take a smaller photo and try again.'
     else if (res.status === 429) msg = 'Too many requests. Wait a few seconds and try again.'
     else if (res.status === 502 || res.status === 503 || res.status === 504) {
-      msg = 'Server is temporarily unavailable. Wait a few seconds and try again.'
+      // Cloudflare often replaces origin 502/504 with plain text "error code: 502"
+      msg = 'Could not reach the server. Wait a few seconds and try again.'
     } else if (res.status >= 500) {
       msg = 'Something went wrong. Please try again.'
     }

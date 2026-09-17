@@ -70,7 +70,8 @@ public class AuthService {
             pending.remove(key);
             org.slf4j.LoggerFactory.getLogger(AuthService.class)
                     .error("OTP send failed for {}: {}", phone, ex.toString());
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+            // 422 not 502 — Cloudflare swallows origin 502 JSON as "error code: 502"
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Could not send OTP right now. Wait a moment and try again.");
         }
     }
