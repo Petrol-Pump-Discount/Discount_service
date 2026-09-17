@@ -54,12 +54,14 @@ public class TwilioSmsOtpSender implements OtpSender {
 
     private void ensureInit() {
         if (initialized) return;
+        // Use 422 (not 502): Cloudflare replaces origin 502 bodies with "error code: 502",
+        // which made the app show a misleading "busy reading bills" message on Sign in.
         if (accountSid.isBlank() || authToken.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "SMS is not configured. Please try again later.");
         }
         if (fromNumber.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "SMS is not configured. Please try again later.");
         }
         Twilio.init(accountSid, authToken);
@@ -81,7 +83,7 @@ public class TwilioSmsOtpSender implements OtpSender {
         } catch (TimeoutException ex) {
             fut.cancel(true);
             log.error("Twilio OTP timed out after {}s for {}", SEND_TIMEOUT_SEC, phone10);
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Could not send OTP right now. Wait a moment and try again.");
         } catch (ExecutionException ex) {
             Throwable cause = ex.getCause() == null ? ex : ex.getCause();
@@ -96,11 +98,11 @@ public class TwilioSmsOtpSender implements OtpSender {
                             "Cannot send OTP to this number. Check the mobile number or Twilio trial limits.");
                 }
                 if (code == 20003) {
-                    throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                             "SMS service authentication failed. Contact the station admin.");
                 }
             }
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Could not send OTP right now. Wait a moment and try again.");
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
