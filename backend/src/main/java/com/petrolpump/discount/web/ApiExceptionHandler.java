@@ -62,8 +62,8 @@ public class ApiExceptionHandler {
         String lower = s.toLowerCase();
         if (lower.contains("sql") || lower.contains("constraint") || lower.contains("hibernate")
                 || lower.contains("jdbc") || lower.contains("psql") || lower.contains("duplicate key")
-                || lower.contains("org.springframework") || lower.contains("exception")
-                || lower.contains("stack") || s.length() > 180) {
+                || lower.contains("org.springframework") || lower.contains("stack")
+                || s.length() > 180) {
             return "Something went wrong. Please try again.";
         }
         return s;
