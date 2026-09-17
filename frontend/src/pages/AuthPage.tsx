@@ -137,10 +137,11 @@ export function AuthPage() {
                 type="checkbox"
                 checked={acceptedTerms}
                 onChange={(e) => setAcceptedTerms(e.target.checked)}
+                aria-required="true"
               />
               <span>
-                I agree to the <Link to="/terms">Terms</Link>, <Link to="/privacy">Privacy</Link>, and{' '}
-                <Link to="/disclaimer">Disclaimer</Link>
+                I agree to the <Link to="/terms">Terms</Link>, <Link to="/privacy">Privacy</Link>
+                {' '}and <Link to="/disclaimer">Disclaimer</Link>
               </span>
             </label>
             <button
