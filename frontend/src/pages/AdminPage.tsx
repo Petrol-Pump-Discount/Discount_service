@@ -189,7 +189,7 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
       setStationContact(pump.contactName || '')
       setStationPhone(pump.contactPhone || '')
       setStationMaps(pump.mapsUrl || '')
-      const qr = await api<{ url: string; token: string }>('/api/redeem/qr-link', { auth: false })
+      const qr = await api<{ url: string; token: string }>('/api/redeem/qr-link')
       setQrUrl(`${window.location.origin}/redeem?token=${qr.token}`)
       setErr('')
     } catch (ex) {

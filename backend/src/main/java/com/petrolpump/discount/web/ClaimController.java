@@ -51,24 +51,19 @@ public class ClaimController {
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Map<String, Object> upload(
-            @RequestHeader(value = "X-Session-Token", required = false) String sessionToken,
-            @RequestParam(required = false) String phone,
+            @RequestHeader("X-Session-Token") String sessionToken,
             @RequestParam String vehicleNo,
             @RequestParam MultipartFile image,
             @RequestParam double lat,
             @RequestParam double lng
     ) throws Exception {
         long bytes = image == null ? 0 : image.getSize();
-        log.info("UPLOAD hit vehicle={} bytes={} lat={} lng={} authed={}",
-                vehicleNo, bytes, lat, lng, sessionToken != null && !sessionToken.isBlank());
+        log.info("UPLOAD hit vehicle={} bytes={} lat={} lng={}", vehicleNo, bytes, lat, lng);
 
-        String throttleKey = sessionToken != null && !sessionToken.isBlank()
-                ? "upload:" + sessionToken
-                : "upload:" + (phone == null ? "anon" : phone);
-        rateLimit.checkWindow(throttleKey, 5, 10);
+        rateLimit.checkWindow("upload:" + sessionToken, 5, 10);
 
         try {
-            var c = claims.upload(sessionToken, phone, vehicleNo, image, lat, lng);
+            var c = claims.upload(sessionToken, vehicleNo, image, lat, lng);
             log.info("UPLOAD ok id={} receipt={} status={}", c.getId(), c.getReceiptKey(), c.getStatus());
             return Map.of(
                     "id", c.getId(),

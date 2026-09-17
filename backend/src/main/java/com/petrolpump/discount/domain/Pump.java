@@ -1,5 +1,6 @@
 package com.petrolpump.discount.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 
 @Entity
@@ -12,6 +13,7 @@ public class Pump {
     private double lat;
     private double lng;
     private double radiusMeters = 50;
+    @JsonIgnore
     @Column(nullable = false, unique = true)
     private String redeemToken;
     @Column(length = 400)

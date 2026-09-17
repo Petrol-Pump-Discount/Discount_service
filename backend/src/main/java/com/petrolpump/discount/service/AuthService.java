@@ -9,6 +9,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -102,7 +104,9 @@ public class AuthService {
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Too many attempts — request a new OTP");
             }
             p.attempts++;
-            ok = p.code.equals(otp);
+            ok = MessageDigest.isEqual(
+                    p.code.getBytes(StandardCharsets.UTF_8),
+                    otp.getBytes(StandardCharsets.UTF_8));
             if (ok) pending.remove(key);
         }
         if (!ok) {
@@ -130,9 +134,14 @@ public class AuthService {
         UserSession s = new UserSession();
         s.setToken(UUID.randomUUID().toString().replace("-", ""));
         s.setUser(user);
-        s.setExpiresAt(Instant.now().plus(30, ChronoUnit.DAYS));
+        s.setExpiresAt(Instant.now().plus(14, ChronoUnit.DAYS));
         sessions.save(s);
         return s.getToken();
+    }
+
+    public void logout(String token) {
+        if (token == null || token.isBlank()) return;
+        sessions.deleteById(token);
     }
 
     public AppUser requireUser(String token) {

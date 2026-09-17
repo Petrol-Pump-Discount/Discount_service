@@ -1,5 +1,5 @@
 import { type FormEvent, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api, setToken } from '../api/client'
 import { Spinner } from '../components/Busy'
 import { TextInput } from '../components/Field'
@@ -31,6 +31,7 @@ export function AuthPage() {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
 
   const phoneErr = useMemo(() => (touched.phone ? validatePhone(phone) : null), [phone, touched.phone])
   const nameErr = useMemo(() => (touched.name ? validateName(name) : null), [name, touched.name])
@@ -42,6 +43,10 @@ export function AuthPage() {
     const pErr = validatePhone(phone)
     if (pErr) {
       setErr(pErr)
+      return
+    }
+    if (!acceptedTerms) {
+      setErr('Accept Terms & Privacy to continue')
       return
     }
     setErr('')
@@ -71,6 +76,10 @@ export function AuthPage() {
       setErr(pErr || oErr || nErr || '')
       return
     }
+    if (!acceptedTerms) {
+      setErr('Accept Terms & Privacy to continue')
+      return
+    }
     setErr('')
     setBusy(true)
     try {
@@ -81,6 +90,7 @@ export function AuthPage() {
           phone: normalizePhone(phone),
           otp: normalizeOtp(otp),
           name: name.trim() || undefined,
+          acceptedTerms: true,
         }),
       })
       setToken(res.token)
@@ -122,9 +132,20 @@ export function AuthPage() {
               onBlur={() => setTouched((t) => ({ ...t, name: true }))}
               onChange={(e) => setName(normalizeName(e.target.value))}
             />
+            <label className="terms-check">
+              <input
+                type="checkbox"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+              />
+              <span>
+                I agree to the <Link to="/terms">Terms</Link>, <Link to="/privacy">Privacy</Link>, and{' '}
+                <Link to="/disclaimer">Disclaimer</Link>
+              </span>
+            </label>
             <button
               className={`btn btn-primary${busy ? ' btn-busy' : ''}`}
-              disabled={busy || !!validatePhone(phone)}
+              disabled={busy || !!validatePhone(phone) || !acceptedTerms}
               type="submit"
             >
               {busy ? <Spinner label="Sending…" /> : 'Send OTP'}
@@ -147,7 +168,7 @@ export function AuthPage() {
             />
             <button
               className={`btn btn-primary${busy ? ' btn-busy' : ''}`}
-              disabled={busy || !!validateOtp(otp)}
+              disabled={busy || !!validateOtp(otp) || !acceptedTerms}
               type="submit"
             >
               {busy ? <Spinner label="Verifying…" /> : 'Continue'}

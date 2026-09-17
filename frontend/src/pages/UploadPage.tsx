@@ -1,14 +1,10 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api, getToken } from '../api/client'
 import { LoadingBlock, Spinner } from '../components/Busy'
 import { TextInput } from '../components/Field'
 import { Shell } from '../components/Shell'
-import {
-  normalizePhone,
-  normalizeVehicle,
-  validatePhone,
-  validateVehicle,
-} from '../lib/validate'
+import { normalizeVehicle, validateVehicle } from '../lib/validate'
 import { compressImageBlob } from '../lib/compressImage'
 
 type UploadRes = {
@@ -31,7 +27,6 @@ export function UploadPage({ role }: { role?: string }) {
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [blob, setBlob] = useState<Blob | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
-  const [phone, setPhone] = useState('')
   const [signedInPhone, setSignedInPhone] = useState<string | null>(null)
   const [vehicleNo, setVehicleNo] = useState('')
   const [lat, setLat] = useState<number | null>(null)
@@ -44,12 +39,7 @@ export function UploadPage({ role }: { role?: string }) {
   const submitLockedRef = useRef(false)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const secure = isSecure()
-  const guest = !signedInPhone
 
-  const phoneErr = useMemo(
-    () => (guest && touched.phone ? validatePhone(phone) : null),
-    [guest, phone, touched.phone],
-  )
   const vehicleErr = useMemo(
     () => (touched.vehicle ? validateVehicle(vehicleNo) : null),
     [vehicleNo, touched.vehicle],
@@ -185,14 +175,11 @@ export function UploadPage({ role }: { role?: string }) {
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (submitLockedRef.current || busy || !blob) return
-    setTouched({ phone: true, vehicle: true })
-    if (guest) {
-      const pErr = validatePhone(phone)
-      if (pErr) {
-        setErr(pErr)
-        return
-      }
+    if (!getToken() || !signedInPhone) {
+      setErr('Sign in required to upload a bill')
+      return
     }
+    setTouched({ vehicle: true })
     const vErr = validateVehicle(vehicleNo)
     if (vErr) {
       setErr(vErr)
@@ -210,7 +197,6 @@ export function UploadPage({ role }: { role?: string }) {
     try {
       const compressed = await compressImageBlob(blob)
       const fd = new FormData()
-      if (guest) fd.append('phone', normalizePhone(phone))
       fd.append('vehicleNo', normalizeVehicle(vehicleNo))
       fd.append('lat', String(lat))
       fd.append('lng', String(lng))
@@ -218,7 +204,6 @@ export function UploadPage({ role }: { role?: string }) {
       const res = await api<UploadRes>('/api/claims/upload', {
         method: 'POST',
         body: fd,
-        auth: !guest,
       })
       setResult(res)
       setBlob(null) // must take a new photo before Submit works again
@@ -232,9 +217,8 @@ export function UploadPage({ role }: { role?: string }) {
     }
   }
 
-  const phoneOk = !guest || !validatePhone(phone)
   const canSubmit =
-    phoneOk && !validateVehicle(vehicleNo) && !!blob && lat != null && lng != null && !busy && !submitLocked
+    !!signedInPhone && !validateVehicle(vehicleNo) && !!blob && lat != null && lng != null && !busy && !submitLocked
 
   return (
     <Shell role={role} title="Upload bill">
@@ -247,6 +231,12 @@ export function UploadPage({ role }: { role?: string }) {
             />
           </div>
         )}
+        {!signedInPhone && (
+          <p className="err" style={{ marginTop: 0 }}>
+            Sign in required to upload.{' '}
+            <Link to="/auth">Sign in</Link>
+          </p>
+        )}
         {!secure && (
           <p className="err" style={{ marginTop: 0 }}>
             This page is HTTP only. Chrome blocks live camera/GPS on plain IP. Use “Take bill photo”, or put the
@@ -257,22 +247,11 @@ export function UploadPage({ role }: { role?: string }) {
           Upload a clear image of your bill inside 100m radius of the pump
         </h2>
         <form className="stack" onSubmit={submit} noValidate aria-busy={busy}>
-          {guest ? (
-            <TextInput
-              label="Registered mobile"
-              inputMode="numeric"
-              maxLength={10}
-              value={phone}
-              error={phoneErr}
-              placeholder="9876543210"
-              onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
-              onChange={(e) => setPhone(normalizePhone(e.target.value))}
-            />
-          ) : (
+          {signedInPhone ? (
             <p className="muted" style={{ margin: 0 }}>
               Signed in as <strong>{signedInPhone}</strong>
             </p>
-          )}
+          ) : null}
           <TextInput
             label="Vehicle number"
             autoCapitalize="characters"

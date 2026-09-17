@@ -7,6 +7,7 @@ import { AuthPage } from './pages/AuthPage'
 import { ClaimsPage } from './pages/ClaimsPage'
 import { EmployeePage } from './pages/EmployeePage'
 import { HomePage } from './pages/HomePage'
+import { LegalPage } from './pages/LegalPage'
 import { RedeemPage } from './pages/RedeemPage'
 import { UploadPage } from './pages/UploadPage'
 import { VehiclesPage } from './pages/VehiclesPage'
@@ -26,6 +27,9 @@ export default function App() {
       <Routes>
         <Route path="/" element={<HomePage role={role} />} />
         <Route path="/auth" element={<AuthPage />} />
+        <Route path="/terms" element={<LegalPage kind="terms" />} />
+        <Route path="/privacy" element={<LegalPage kind="privacy" />} />
+        <Route path="/disclaimer" element={<LegalPage kind="disclaimer" />} />
         <Route path="/account" element={<AccountPage onRole={setRole} />} />
         <Route path="/vehicles" element={<VehiclesPage onRole={setRole} />} />
         <Route path="/claims" element={<ClaimsPage onRole={setRole} />} />

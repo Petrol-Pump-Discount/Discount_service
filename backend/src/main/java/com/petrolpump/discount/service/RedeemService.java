@@ -8,7 +8,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
-import java.util.*;
 
 @Service
 public class RedeemService {
@@ -17,7 +16,9 @@ public class RedeemService {
     private final RedeemTransactionRepository redeems;
 
     public RedeemService(PumpRepository pumps, AppUserRepository users, RedeemTransactionRepository redeems) {
-        this.pumps = pumps; this.users = users; this.redeems = redeems;
+        this.pumps = pumps;
+        this.users = users;
+        this.redeems = redeems;
     }
 
     public Pump requirePumpByToken(String token) {
@@ -26,8 +27,18 @@ public class RedeemService {
     }
 
     @Transactional
-    public RedeemTransaction redeem(AppUser user, String pumpToken, Long coins, Double rupees) {
+    public RedeemTransaction redeem(AppUser user, String pumpToken, Long coins, Double rupees,
+                                    Double lat, Double lng) {
         Pump pump = requirePumpByToken(pumpToken);
+        if (lat == null || lng == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Location required — redeem only at the pump");
+        }
+        double dist = GeoUtil.haversineMeters(pump.getLat(), pump.getLng(), lat, lng);
+        if (dist > pump.getRadiusMeters()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Redeem only within pump boundary (" + (int) pump.getRadiusMeters() + "m)");
+        }
         long amount;
         if (coins != null && coins > 0) amount = coins;
         else if (rupees != null && rupees > 0) amount = Math.round(rupees * 100);

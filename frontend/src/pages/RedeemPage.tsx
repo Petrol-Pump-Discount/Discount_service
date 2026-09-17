@@ -27,6 +27,8 @@ export function RedeemPage({ onRole }: { onRole?: (r: string) => void }) {
   const [otpBusy, setOtpBusy] = useState(false)
   const [confirmPay, setConfirmPay] = useState(false)
   const [touched, setTouched] = useState(false)
+  const [lat, setLat] = useState<number | null>(null)
+  const [lng, setLng] = useState<number | null>(null)
 
   const maxRupees = (me?.walletCoins ?? 0) / 100
   const maxCoins = me?.walletCoins ?? 0
@@ -35,6 +37,18 @@ export function RedeemPage({ onRole }: { onRole?: (r: string) => void }) {
     if (!touched || !me) return null
     return mode === 'rupees' ? validateRupees(amount, maxRupees) : validateCoins(amount, maxCoins)
   }, [amount, mode, maxRupees, maxCoins, touched, me])
+
+  useEffect(() => {
+    if (!navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        setLat(p.coords.latitude)
+        setLng(p.coords.longitude)
+      },
+      () => undefined,
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 },
+    )
+  }, [])
 
   useEffect(() => {
     if (!token) {
@@ -109,11 +123,14 @@ export function RedeemPage({ onRole }: { onRole?: (r: string) => void }) {
     setPaid(null)
     setBusy(true)
     try {
+      if (lat == null || lng == null) {
+        throw new Error('Allow location — redeem only at the pump')
+      }
       const n = Number(amount)
       const body =
         mode === 'rupees'
-          ? { pumpToken: token, rupees: n, otp }
-          : { pumpToken: token, coins: Math.round(n), otp }
+          ? { pumpToken: token, rupees: n, otp, lat, lng }
+          : { pumpToken: token, coins: Math.round(n), otp, lat, lng }
       const res = await api<PayRes>('/api/redeem/pay', {
         method: 'POST',
         body: JSON.stringify(body),

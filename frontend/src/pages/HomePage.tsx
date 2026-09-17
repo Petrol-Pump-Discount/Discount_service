@@ -36,6 +36,10 @@ export function HomePage({ role }: { role?: string }) {
   return (
     <Shell role={role}>
       <p className="lead">Cashback coins on fuel. Redeem only at this pump.</p>
+      <p className="muted" style={{ marginTop: '-0.35rem' }}>
+        Coins are promotional rewards subject to verification.{' '}
+        <Link to="/disclaimer">Disclaimer</Link> · <Link to="/terms">Terms</Link>
+      </p>
       <div className="hero-actions">
         <Link className="btn btn-primary" to="/upload">
           Upload bill

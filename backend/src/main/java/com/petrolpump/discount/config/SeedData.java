@@ -28,7 +28,7 @@ public class SeedData {
                 p.setLat(13.7652412);
                 p.setLng(76.8516552);
                 p.setRadiusMeters(50);
-                p.setRedeemToken("pump-demo-token");
+                p.setRedeemToken(java.util.UUID.randomUUID().toString().replace("-", ""));
                 p.setAddress("Ground Floor, NH 4, near Anjaniya Swami Temple, Mangangi Thanda, Tumkur, Karnataka 572139");
                 p.setContactName("Dhanush R");
                 p.setContactPhone("9448166221");
@@ -53,6 +53,10 @@ public class SeedData {
                 }
                 if (p.getMapsUrl() == null || p.getMapsUrl().isBlank()) {
                     p.setMapsUrl("https://maps.app.goo.gl/NWSYMhsgTPrDCrKs6");
+                    dirty = true;
+                }
+                if ("pump-demo-token".equals(p.getRedeemToken())) {
+                    p.setRedeemToken(java.util.UUID.randomUUID().toString().replace("-", ""));
                     dirty = true;
                 }
                 if (dirty) pumps.save(p);
