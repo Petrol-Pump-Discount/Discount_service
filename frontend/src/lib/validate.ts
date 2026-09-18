@@ -36,19 +36,25 @@ export function normalizeVehicle(raw: string): string {
   return raw.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 12)
 }
 
-/** KA01AB1234 / 22BH1234AA style after normalize */
-const VEHICLE_STD = /^[A-Z]{2}[0-9]{2}[A-Z]{1,3}[0-9]{4}$/
+/**
+ * Indian plates after normalize (no spaces/hyphens):
+ * - Standard / old RTO: KA03NW8834, KA01A1234, KA01ABC1234, KA011234, DL1CAB1234
+ * - Bharat series: 22BH1234AA
+ * - Diplomatic: 12CD1234, 199CC99
+ */
+const VEHICLE_STANDARD = /^[A-Z]{2}[0-9]{1,2}[A-Z]{0,3}[0-9]{4}$/
 const VEHICLE_BH = /^[0-9]{2}BH[0-9]{4}[A-Z]{1,2}$/
+const VEHICLE_DIPLOMATIC = /^[0-9]{1,3}(CD|CC|UN)[0-9]{1,4}[A-Z]{0,2}$/
 
 export function validateVehicle(raw: string): string | null {
   const v = normalizeVehicle(raw)
   if (!v) return 'Enter vehicle number'
   if (v === 'NOTENTERED' || v === 'NOTENTRED') return 'Invalid vehicle number'
-  if (v.length < 8 || v.length > 11) return 'Vehicle number looks incomplete'
-  if (!VEHICLE_STD.test(v) && !VEHICLE_BH.test(v)) {
-    return 'Format like KA01AB1234'
+  if (v.length < 6 || v.length > 12) return 'Vehicle number looks incomplete'
+  if (VEHICLE_STANDARD.test(v) || VEHICLE_BH.test(v) || VEHICLE_DIPLOMATIC.test(v)) {
+    return null
   }
-  return null
+  return 'Enter a valid Indian vehicle number'
 }
 
 export function normalizeOtp(raw: string): string {
@@ -145,6 +151,11 @@ export function __selfCheck(): void {
   assert(validatePhone('9876543210') === null, 'phone ok')
   assert(validatePhone('0876543210') !== null, 'phone bad start')
   assert(validateVehicle('KA-01-AB-1234') === null, 'vehicle ok')
+  assert(validateVehicle('KA03NW8834') === null, 'vehicle ka03')
+  assert(validateVehicle('DL1CAB1234') === null, 'vehicle delhi 1-digit RTO')
+  assert(validateVehicle('KA011234') === null, 'vehicle old no series')
+  assert(validateVehicle('22BH1234AA') === null, 'vehicle BH')
+  assert(validateVehicle('12CD1234') === null, 'vehicle diplomatic')
   assert(validateVehicle('KA01') !== null, 'vehicle short')
   assert(validateName('Ravi Kumar') === null, 'name ok')
   assert(validateOtp('123456') === null, 'otp ok')

@@ -68,6 +68,9 @@ public class ClaimService {
         }
 
         String normVeh = VehicleNormalizer.normalize(vehicleNo);
+        if (!VehicleNormalizer.isValid(normVeh)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a valid Indian vehicle number");
+        }
         if (!vehicles.existsByUserAndRegNo(user, normVeh)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vehicle not linked to this account");
         }

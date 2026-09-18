@@ -35,8 +35,9 @@ public class VehicleController {
     public Map<String, Object> add(@RequestHeader("X-Session-Token") String token, @RequestBody Map<String, String> body) {
         var user = auth.requireUser(token);
         String reg = VehicleNormalizer.normalize(body.get("regNo"));
-        if (reg == null || reg.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a valid vehicle number");
+        if (!VehicleNormalizer.isValid(reg)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Enter a valid Indian vehicle number (e.g. KA01AB1234, DL1CAB1234, 22BH1234AA)");
         }
         if (vehicles.existsByUserAndRegNo(user, reg)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This vehicle is already linked to your account.");

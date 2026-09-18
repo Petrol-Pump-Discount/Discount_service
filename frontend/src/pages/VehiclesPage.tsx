@@ -114,7 +114,7 @@ export function VehiclesPage({ onRole }: { onRole?: (r: string) => void }) {
             maxLength={12}
             value={regNo}
             error={vehicleErr}
-            hint="e.g. KA01AB1234"
+            hint="Any Indian plate — KA01AB1234, DL1CAB1234, 22BH1234AA"
             placeholder="KA01AB1234"
             onBlur={() => setTouched(true)}
             onChange={(e) => setRegNo(normalizeVehicle(e.target.value))}

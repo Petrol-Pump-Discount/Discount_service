@@ -41,7 +41,61 @@ type Claim = {
   coinsCredited: number
   rejectReason?: string
   createdAt: string
+  decidedAt?: string | null
   hasPhoto?: boolean
+}
+
+type ClaimsPage = {
+  items: Claim[]
+  page: number
+  size: number
+  total: number
+  totalPages: number
+  hasMore: boolean
+}
+
+function todayYmd(): string {
+  const d = new Date()
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d)
+  const y = parts.find((p) => p.type === 'year')?.value
+  const m = parts.find((p) => p.type === 'month')?.value
+  const day = parts.find((p) => p.type === 'day')?.value
+  return `${y}-${m}-${day}`
+}
+
+function daysAgoYmd(n: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() - n)
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d)
+  const y = parts.find((p) => p.type === 'year')?.value
+  const m = parts.find((p) => p.type === 'month')?.value
+  const day = parts.find((p) => p.type === 'day')?.value
+  return `${y}-${m}-${day}`
+}
+
+function formatClaimDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return iso
+  }
 }
 
 type Alert = { id: number; message: string; createdAt: string; type?: string }
@@ -84,6 +138,13 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
   const [cfg, setCfg] = useState<Config | null>(null)
   const [claims, setClaims] = useState<Claim[]>([])
   const [claimsLoaded, setClaimsLoaded] = useState(false)
+  const [claimsPage, setClaimsPage] = useState(0)
+  const [claimsTotal, setClaimsTotal] = useState(0)
+  const [claimsTotalPages, setClaimsTotalPages] = useState(0)
+  const [claimsHasMore, setClaimsHasMore] = useState(false)
+  const [claimsFrom, setClaimsFrom] = useState(() => daysAgoYmd(30))
+  const [claimsTo, setClaimsTo] = useState(() => todayYmd())
+  const CLAIMS_PAGE_SIZE = 8
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
   const [blacklist, setBlacklist] = useState<Blacklist[] | null>(null)
@@ -413,18 +474,47 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
     }
   }
 
-  async function applyClaimsFilter(e: FormEvent) {
-    e.preventDefault()
+  async function loadClaims(page: number, append: boolean) {
     setClaimsBusy(true)
     setErr('')
     try {
-      setClaims(await api<Claim[]>(`/api/admin/claims?status=${statusFilter}`))
+      if (claimsFrom && claimsTo && claimsFrom > claimsTo) {
+        setErr('From date must be on or before To date')
+        return
+      }
+      const q = new URLSearchParams()
+      q.set('status', statusFilter)
+      q.set('page', String(page))
+      q.set('size', String(CLAIMS_PAGE_SIZE))
+      if (claimsFrom) q.set('from', claimsFrom)
+      if (claimsTo) q.set('to', claimsTo)
+      const res = await api<ClaimsPage>(`/api/admin/claims?${q}`)
+      setClaims((prev) => (append ? [...prev, ...res.items] : res.items))
+      setClaimsPage(res.page)
+      setClaimsTotal(res.total)
+      setClaimsTotalPages(res.totalPages)
+      setClaimsHasMore(res.hasMore)
       setClaimsLoaded(true)
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'Failed')
     } finally {
       setClaimsBusy(false)
     }
+  }
+
+  async function applyClaimsFilter(e: FormEvent) {
+    e.preventDefault()
+    await loadClaims(0, false)
+  }
+
+  async function claimsGoPage(page: number) {
+    if (page < 0 || (claimsTotalPages > 0 && page >= claimsTotalPages)) return
+    await loadClaims(page, false)
+  }
+
+  async function claimsLoadMore() {
+    if (!claimsHasMore || claimsBusy) return
+    await loadClaims(claimsPage + 1, true)
   }
 
   async function viewClaimPhoto(claimId: number) {
@@ -786,15 +876,30 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
                 <option value="REJECTED">REJECTED</option>
               </select>
             </label>
+            <div className="row" style={{ alignItems: 'flex-end' }}>
+              <label className="field" style={{ flex: 1, minWidth: 140 }}>
+                <span className="field-label">From date</span>
+                <input type="date" value={claimsFrom} onChange={(e) => setClaimsFrom(e.target.value)} />
+              </label>
+              <label className="field" style={{ flex: 1, minWidth: 140 }}>
+                <span className="field-label">To date</span>
+                <input type="date" value={claimsTo} onChange={(e) => setClaimsTo(e.target.value)} />
+              </label>
+            </div>
             <button className={`btn btn-primary${claimsBusy ? ' btn-busy' : ''}`} type="submit" disabled={claimsBusy}>
               {claimsBusy ? <Spinner label="Loading…" /> : 'Show claims'}
             </button>
           </form>
           {claimsLoaded && (
             <div style={{ overflowX: 'auto', marginTop: 8 }}>
+              <p className="muted" style={{ margin: '0 0 0.5rem' }}>
+                Showing {claims.length} of {claimsTotal}
+                {claimsTotalPages > 0 ? ` · page ${claimsPage + 1}/${claimsTotalPages}` : ''}
+              </p>
               <table className="table">
                 <thead>
                   <tr>
+                    <th>Date</th>
                     <th>ID</th>
                     <th>Phone</th>
                     <th>Vehicle</th>
@@ -808,6 +913,7 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
                 <tbody>
                   {claims.map((c) => (
                     <tr key={c.id}>
+                      <td style={{ whiteSpace: 'nowrap' }}>{formatClaimDate(c.createdAt)}</td>
                       <td>{c.id}</td>
                       <td>{c.phone}</td>
                       <td>{c.vehicleNo}</td>
@@ -842,7 +948,35 @@ export function AdminPage({ onRole }: { onRole?: (r: string) => void }) {
                   ))}
                 </tbody>
               </table>
-              {claims.length === 0 && <p className="muted">No claims for this status</p>}
+              {claims.length === 0 && <p className="muted">No claims for this filter</p>}
+              {claims.length > 0 && (
+                <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-dark"
+                    disabled={claimsBusy || claimsPage <= 0}
+                    onClick={() => void claimsGoPage(claimsPage - 1)}
+                  >
+                    Prev
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-dark"
+                    disabled={claimsBusy || !claimsHasMore}
+                    onClick={() => void claimsGoPage(claimsPage + 1)}
+                  >
+                    Next
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={claimsBusy || !claimsHasMore}
+                    onClick={() => void claimsLoadMore()}
+                  >
+                    {claimsBusy ? <Spinner label="Loading…" /> : 'Load more'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
