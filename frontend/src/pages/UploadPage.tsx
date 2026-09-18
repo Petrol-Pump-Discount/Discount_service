@@ -23,7 +23,6 @@ function isSecure(): boolean {
 
 export function UploadPage({ role }: { role?: string }) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [blob, setBlob] = useState<Blob | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
@@ -35,6 +34,7 @@ export function UploadPage({ role }: { role?: string }) {
   const [err, setErr] = useState('')
   const [result, setResult] = useState<UploadRes | null>(null)
   const [busy, setBusy] = useState(false)
+  const [camBusy, setCamBusy] = useState(false)
   const [submitLocked, setSubmitLocked] = useState(false)
   const submitLockedRef = useRef(false)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
@@ -94,45 +94,64 @@ export function UploadPage({ role }: { role?: string }) {
     setBlob(null)
     setPreview(null)
     unlockForNewPhoto()
-    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  function stopCamera() {
+    stream?.getTracks().forEach((t) => t.stop())
+    setStream(null)
+  }
+
+  async function openCameraStream(): Promise<MediaStream> {
+    if (!secure) {
+      throw new Error('Camera needs HTTPS — open https://nss01.com (not plain HTTP / IP)')
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error('Camera is not available on this browser')
+    }
+    // Prefer rear camera on phones; fall back to any camera (laptop webcam).
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      })
+    } catch {
+      return await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+    }
   }
 
   async function startLiveCamera() {
     setErr('')
     clearPhoto()
-    if (!secure) {
-      setErr('Camera in-browser needs HTTPS. Use “Take bill photo” below, or open via your Cloudflare domain.')
-      fileRef.current?.click()
-      return
-    }
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setErr('Camera API not available — use Take bill photo')
-      fileRef.current?.click()
-      return
-    }
+    stopCamera()
+    setCamBusy(true)
     try {
-      const s = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
-        audio: false,
-      })
+      const s = await openCameraStream()
       setStream(s)
-      if (videoRef.current) {
-        videoRef.current.srcObject = s
-        await videoRef.current.play()
-      }
     } catch (ex) {
       const name = ex instanceof DOMException ? ex.name : ''
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        setErr('Camera permission denied — allow Camera for this site in Chrome settings')
+        setErr('Camera permission denied — allow Camera for this site in browser settings')
+      } else if (ex instanceof Error && ex.message) {
+        setErr(ex.message)
       } else {
-        setErr('Could not open live camera — use Take bill photo instead')
+        setErr('Could not open camera. Allow camera access and try again.')
       }
-      fileRef.current?.click()
+    } finally {
+      setCamBusy(false)
     }
   }
 
   useEffect(() => {
-    return () => stream?.getTracks().forEach((t) => t.stop())
+    if (!stream || !videoRef.current) return
+    const video = videoRef.current
+    video.srcObject = stream
+    void video.play().catch(() => undefined)
+  }, [stream])
+
+  useEffect(() => {
+    return () => {
+      stream?.getTracks().forEach((t) => t.stop())
+    }
   }, [stream])
 
   function capture() {
@@ -150,26 +169,11 @@ export function UploadPage({ role }: { role?: string }) {
         unlockForNewPhoto()
         setBlob(b)
         setPreview(URL.createObjectURL(b))
-        stream?.getTracks().forEach((t) => t.stop())
-        setStream(null)
+        stopCamera()
       },
       'image/jpeg',
       0.92,
     )
-  }
-
-  function onNativePhoto(file: File | undefined) {
-    if (!file) return
-    if (!file.type.startsWith('image/')) {
-      setErr('Please take a photo of the bill')
-      return
-    }
-    setErr('')
-    unlockForNewPhoto()
-    setBlob(file)
-    setPreview(URL.createObjectURL(file))
-    stream?.getTracks().forEach((t) => t.stop())
-    setStream(null)
   }
 
   async function submit(e: FormEvent) {
@@ -206,8 +210,8 @@ export function UploadPage({ role }: { role?: string }) {
         body: fd,
       })
       setResult(res)
-      setBlob(null) // must take a new photo before Submit works again
-      if (fileRef.current) fileRef.current.value = ''
+      setBlob(null)
+      setPreview(null)
     } catch (ex) {
       submitLockedRef.current = false
       setSubmitLocked(false)
@@ -239,12 +243,11 @@ export function UploadPage({ role }: { role?: string }) {
         )}
         {!secure && (
           <p className="err" style={{ marginTop: 0 }}>
-            This page is HTTP only. Chrome blocks live camera/GPS on plain IP. Use “Take bill photo”, or put the
-            site behind Cloudflare HTTPS for full permissions.
+            Camera needs HTTPS. Open the site via your Cloudflare domain (not plain HTTP / IP).
           </p>
         )}
         <h2 className="upload-guide">
-          Upload a clear image of your bill inside 100m radius of the pump
+          Take a clear camera photo of your bill at the pump (file upload not allowed)
         </h2>
         <form className="stack" onSubmit={submit} noValidate aria-busy={busy}>
           {signedInPhone ? (
@@ -266,32 +269,25 @@ export function UploadPage({ role }: { role?: string }) {
           />
 
           <div className="camera-box">
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              style={{ display: 'none' }}
-              onChange={(e) => onNativePhoto(e.target.files?.[0])}
-            />
             {!preview && !stream && (
-              <div className="stack">
-                <button type="button" className="btn btn-primary" onClick={() => fileRef.current?.click()}>
-                  Take bill photo
-                </button>
-                {secure && (
-                  <button type="button" className="btn btn-dark" onClick={() => void startLiveCamera()}>
-                    Live camera
-                  </button>
-                )}
-              </div>
+              <button
+                type="button"
+                className={`btn btn-primary${camBusy ? ' btn-busy' : ''}`}
+                disabled={camBusy || !secure}
+                onClick={() => void startLiveCamera()}
+              >
+                {camBusy ? <Spinner label="Opening camera…" /> : 'Open camera'}
+              </button>
             )}
             {stream && (
               <>
                 <video ref={videoRef} playsInline muted autoPlay />
-                <div className="row" style={{ justifyContent: 'center', marginTop: 10 }}>
+                <div className="row" style={{ justifyContent: 'center', marginTop: 10, gap: 8 }}>
                   <button type="button" className="btn btn-primary" onClick={capture}>
                     Capture
+                  </button>
+                  <button type="button" className="btn btn-danger" onClick={stopCamera}>
+                    Cancel
                   </button>
                 </div>
               </>
@@ -305,10 +301,10 @@ export function UploadPage({ role }: { role?: string }) {
                     className="btn btn-danger"
                     onClick={() => {
                       clearPhoto()
-                      fileRef.current?.click()
+                      void startLiveCamera()
                     }}
                   >
-                    Retake
+                    Retake with camera
                   </button>
                 </div>
               </>
@@ -348,7 +344,7 @@ export function UploadPage({ role }: { role?: string }) {
             <p className="muted">
               <span className="badge warn">{result.status}</span> · {result.receiptKey} · {result.volumeLitres} L
             </p>
-            <p className="muted">Take a new bill photo to submit again.</p>
+            <p className="muted">Open camera again to submit another bill.</p>
           </div>
         )}
         {err && <p className="err">{err}</p>}
