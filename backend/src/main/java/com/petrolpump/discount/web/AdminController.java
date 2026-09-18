@@ -10,7 +10,8 @@ import com.petrolpump.discount.service.WalletAdjustmentService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -23,6 +24,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -99,14 +102,63 @@ public class AdminController {
         return blacklist.findAll();
     }
 
+    private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
+    private static final int CLAIMS_PAGE_SIZE_DEFAULT = 8;
+    private static final int CLAIMS_PAGE_SIZE_MAX = 50;
+
     @GetMapping("/claims")
-    public List<Map<String, Object>> claims(@RequestHeader("X-Session-Token") String token,
-                                            @RequestParam(required = false) String status) {
+    public Map<String, Object> claims(@RequestHeader("X-Session-Token") String token,
+                                      @RequestParam(required = false) String status,
+                                      @RequestParam(required = false) String from,
+                                      @RequestParam(required = false) String to,
+                                      @RequestParam(defaultValue = "0") int page,
+                                      @RequestParam(required = false) Integer size) {
         admin(token);
-        List<BillClaim> list = status == null
-                ? claims.findAll(Sort.by(Sort.Direction.DESC, "createdAt"))
-                : claims.findByStatusOrderByCreatedAtDesc(ClaimStatus.valueOf(status));
-        return list.stream().map(this::claimDto).collect(Collectors.toList());
+        ClaimStatus st = null;
+        if (status != null && !status.isBlank()) {
+            try {
+                st = ClaimStatus.valueOf(status.trim().toUpperCase());
+            } catch (IllegalArgumentException ex) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status");
+            }
+        }
+        int pageSize = size == null ? CLAIMS_PAGE_SIZE_DEFAULT : Math.min(Math.max(size, 1), CLAIMS_PAGE_SIZE_MAX);
+        int pageNo = Math.max(page, 0);
+
+        Instant fromInst = parseDayStart(from, LocalDate.now(IST).minusDays(30));
+        Instant toInst = parseDayEndExclusive(to, LocalDate.now(IST));
+        if (!toInst.isAfter(fromInst)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "End date must be on or after start date");
+        }
+
+        Page<BillClaim> result = claims.searchAdmin(st, fromInst, toInst, PageRequest.of(pageNo, pageSize));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("items", result.getContent().stream().map(this::claimDto).collect(Collectors.toList()));
+        out.put("page", result.getNumber());
+        out.put("size", result.getSize());
+        out.put("total", result.getTotalElements());
+        out.put("totalPages", result.getTotalPages());
+        out.put("hasMore", result.hasNext());
+        return out;
+    }
+
+    private static Instant parseDayStart(String ymd, LocalDate fallback) {
+        LocalDate d = parseLocalDate(ymd, fallback);
+        return d.atStartOfDay(IST).toInstant();
+    }
+
+    private static Instant parseDayEndExclusive(String ymd, LocalDate fallback) {
+        LocalDate d = parseLocalDate(ymd, fallback);
+        return d.plusDays(1).atStartOfDay(IST).toInstant();
+    }
+
+    private static LocalDate parseLocalDate(String ymd, LocalDate fallback) {
+        if (ymd == null || ymd.isBlank()) return fallback;
+        try {
+            return LocalDate.parse(ymd.trim());
+        } catch (Exception ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Use date as YYYY-MM-DD");
+        }
     }
 
     @PostMapping("/wallet/adjust")
@@ -324,6 +376,7 @@ public class AdminController {
         m.put("coinsCredited", c.getCoinsCredited());
         m.put("rejectReason", c.getRejectReason());
         m.put("createdAt", c.getCreatedAt().toString());
+        m.put("decidedAt", c.getDecidedAt() == null ? null : c.getDecidedAt().toString());
         m.put("hasPhoto", c.getImagePath() != null && !c.getImagePath().isBlank());
         return m;
     }
